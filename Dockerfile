@@ -62,12 +62,13 @@ RUN set -eux; \
     yt-dlp --version
 
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin ytdl \
- && mkdir -p /data \
- && chown -R ytdl:ytdl /data
+ && mkdir -p /data /library \
+ && chown -R ytdl:ytdl /data /library
 
 COPY --from=build /out/server /usr/local/bin/server
 
 ENV DATA_DIR=/data \
+    LIBRARY_DIR=/library \
     PORT=8080 \
     YTDLP_BIN=/usr/local/bin/yt-dlp \
     FFMPEG_BIN=/usr/bin/ffmpeg \
@@ -75,7 +76,7 @@ ENV DATA_DIR=/data \
 
 USER ytdl
 WORKDIR /data
-VOLUME ["/data"]
+VOLUME ["/data", "/library"]
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

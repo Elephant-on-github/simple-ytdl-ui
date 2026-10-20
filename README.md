@@ -88,7 +88,8 @@ sensible defaults.
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `8080` | Port the server listens on. |
-| `DATA_DIR` | `/data` | Where downloads, the library index and the Google token are stored. Mount this. |
+| `DATA_DIR` | `/data` | Where the app keeps its state: the library index, the job list, the Google token. Mount this. |
+| `LIBRARY_DIR` | *(empty)* | Where the downloaded media is stored. Empty means "next to the state in `DATA_DIR`". Set it to put the library on its own volume. |
 | `YTDLP_BIN` | `yt-dlp` | Path to the `yt-dlp` binary. |
 | `FFMPEG_BIN` | `ffmpeg` | Path to `ffmpeg` (needed for MP3 extraction and thumbnail embedding). |
 | `CONCURRENT_DOWNLOADS` | `2` | How many downloads run at the same time. |
@@ -97,6 +98,21 @@ sensible defaults.
 | `GOOGLE_CLIENT_SECRET` | – | Google OAuth client secret. Unset ⇒ Google features are off. |
 | `GOOGLE_REDIRECT_URL` | `http://localhost:8080/api/auth/google/callback` | Must match the redirect URI registered in Google Cloud. |
 | `WEB_DIR` | – | Serve the frontend from a directory instead of the embedded build (development). |
+
+### Putting the library on its own disk
+
+The media can live somewhere else than the state. Point `LIBRARY_DIR` at a volume:
+
+```yaml
+volumes:
+  - ./data:/data
+  - /mnt/big-disk:/library
+environment:
+  LIBRARY_DIR: /library
+```
+
+The image ships with `/library` as a second volume, so this works out of the box. The
+files land in `<LIBRARY_DIR>/music/…` and `<LIBRARY_DIR>/video/…`.
 
 ---
 
@@ -202,6 +218,18 @@ Dockerfile   three stages: bun build -> go build -> debian runtime
 | `GET` | `/api/library/{id}/cover` | cover art |
 
 ---
+
+## Design
+
+The interface is a near-black gallery frame, in the spirit of the
+[Vesper](https://kombai.com/gallery/inspirations/vesper/) template: pure black, warm
+parchment ink, and exactly one colour — a muted amber `#d4a574` — used only as a
+signal. Two voices carry everything: **Instrument Serif** for the editorial lines
+(headlines, plate titles, the italic) and **JetBrains Mono** for every machine label
+(nav, counts, coordinates, timestamps). Frames are drawn with hairlines and corner
+ticks instead of rounded cards, and depth comes from a film grain and a slow
+vignette rather than shadows. Both fonts are shipped with the app, so the interface
+does not need a font CDN to look right.
 
 ## Notes and limits
 

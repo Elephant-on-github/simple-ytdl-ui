@@ -4,6 +4,7 @@ import App from './App.vue'
 import { router } from './router'
 import { useModeStore } from './stores/mode'
 
+import './styles/fonts.css'
 import './styles/theme.css'
 import './styles/base.css'
 

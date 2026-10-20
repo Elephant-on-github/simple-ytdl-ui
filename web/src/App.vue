@@ -1,31 +1,62 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterView } from 'vue-router'
 import TopBar from './components/TopBar.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import { usePlayerStore } from './stores/player'
 import { useSessionStore } from './stores/session'
+import { useModeStore } from './stores/mode'
 
 const player = usePlayerStore()
 const session = useSessionStore()
+const mode = useModeStore()
 const hasPlayer = computed(() => player.isOpen)
 
+/* The footbar carries a live UTC clock, the way a studio page would. */
+const clock = ref('')
+let timer: ReturnType<typeof setInterval> | undefined
+
+function tick(): void {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  clock.value = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(
+    now.getUTCSeconds(),
+  )} UTC`
+}
+
 onMounted(() => {
-  // The rail shows the server version, so the session is needed everywhere.
+  // The footer shows the server version, so the session is needed everywhere.
   void session.refresh()
+  tick()
+  timer = setInterval(tick, 1000)
+})
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
 })
 </script>
 
 <template>
   <div class="shell" :class="{ 'shell--player': hasPlayer }">
-    <TopBar class="shell-rail" />
-    <main class="shell-main">
+    <span class="grain" aria-hidden="true" />
+    <span class="vignette" aria-hidden="true" />
+
+    <TopBar class="shell-top" />
+
+    <main class="shell-stage">
       <RouterView v-slot="{ Component }">
         <Transition name="view" mode="out-in">
           <component :is="Component" />
         </Transition>
       </RouterView>
     </main>
+
+    <footer class="shell-foot">
+      <span class="t-meta">{{ clock }}</span>
+      <span class="t-meta">{{ mode.mode === 'music' ? 'MP3' : 'VIDEO' }} MODE</span>
+      <span class="t-meta">{{ session.version ? `BUILD ${session.version}` : 'SELF-HOSTED' }}</span>
+    </footer>
+
     <PlayerBar />
   </div>
 </template>
@@ -33,50 +64,45 @@ onMounted(() => {
 <style scoped>
 .shell {
   display: grid;
-  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
   min-height: 100vh;
-  background: var(--canvas);
+  background: var(--bg);
 }
 
-.shell-main {
+/* The stage holds the page and keeps the editorial rhythm. */
+.shell-stage {
   min-width: 0;
-  padding: var(--sp-9) var(--sp-9) var(--sp-9);
+  padding: var(--gap) var(--pad-x);
 }
 
-/* Reserve room for the docked player only while it is on screen. */
-.shell--player .shell-main {
-  padding-bottom: calc(var(--player-h) + var(--sp-7));
+/* The footbar: two rules with a clock between them. */
+.shell-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--xxl);
+  padding: var(--lg) var(--pad-x);
+  border-top: 1px solid var(--hairline);
 }
 
-@media (max-width: 900px) {
-  .shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .shell-main {
-    padding: var(--sp-7) var(--sp-5) var(--sp-7);
-  }
-
-  .shell--player .shell-main {
-    padding-bottom: calc(var(--player-h) + var(--sp-6));
-  }
+.shell-foot .t-meta {
+  color: var(--ink-faint);
 }
 
-@media (max-width: 560px) {
-  .shell-main {
-    padding: var(--sp-6) var(--sp-4) var(--sp-6);
-  }
+.shell-foot .t-meta:nth-child(2) {
+  color: var(--accent);
+}
 
-  .shell--player .shell-main {
-    padding-bottom: calc(var(--player-h) + var(--sp-5));
-  }
+/* Leave room for the docked player only while it is on screen. */
+.shell--player .shell-stage {
+  padding-bottom: calc(76px + var(--gap));
 }
 
 .view-enter-active,
 .view-leave-active {
   transition:
-    opacity var(--dur) var(--ease),
-    transform var(--dur) var(--ease);
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .view-enter-from {
@@ -86,5 +112,15 @@ onMounted(() => {
 
 .view-leave-to {
   opacity: 0;
+}
+
+@media (max-width: 620px) {
+  .shell-foot {
+    gap: var(--lg);
+  }
+
+  .shell-foot .t-meta:nth-child(3) {
+    display: none;
+  }
 }
 </style>

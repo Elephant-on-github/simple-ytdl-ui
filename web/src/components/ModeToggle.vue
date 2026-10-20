@@ -8,44 +8,21 @@ const mode = useModeStore()
   <div class="seg" role="group" aria-label="Download quality">
     <button
       type="button"
-      class="seg-btn"
+      class="seg-btn t-nav"
       :class="{ 'seg-btn--on': mode.mode === 'video' }"
       :aria-pressed="mode.mode === 'video'"
       @click="mode.set('video')"
     >
-      <svg width="15" height="15" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-        <rect
-          x="2.4"
-          y="4.2"
-          width="13.2"
-          height="9.6"
-          rx="2"
-          stroke="currentColor"
-          stroke-width="1.5"
-        />
-        <path d="M8 7.2 11.6 9 8 10.8V7.2Z" fill="currentColor" />
-      </svg>
-      <span>Video</span>
+      Video
     </button>
     <button
       type="button"
-      class="seg-btn"
+      class="seg-btn t-nav"
       :class="{ 'seg-btn--on': mode.mode === 'music' }"
       :aria-pressed="mode.mode === 'music'"
       @click="mode.set('music')"
     >
-      <svg width="15" height="15" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-        <path
-          d="M6.4 12.6V4.2l7-1.2v8.4"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-        <circle cx="4.6" cy="12.8" r="1.9" stroke="currentColor" stroke-width="1.5" />
-        <circle cx="11.6" cy="11.6" r="1.9" stroke="currentColor" stroke-width="1.5" />
-      </svg>
-      <span>MP3</span>
+      MP3
     </button>
   </div>
 </template>
@@ -53,48 +30,49 @@ const mode = useModeStore()
 <style scoped>
 .seg {
   display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.035);
   border: 1px solid var(--hairline);
 }
 
 .seg-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 38px;
-  padding: 0 16px;
-  border-radius: 7px;
-  color: var(--muted);
-  font-size: var(--fs-13);
-  font-weight: 500;
-  letter-spacing: -0.004em;
-  transition:
-    background var(--dur) var(--ease),
-    color var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease);
+  position: relative;
+  height: 34px;
+  padding: 0 var(--xl);
+  color: var(--ink-dim);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+/* A hairline separates the two, never a fill. */
+.seg-btn + .seg-btn {
+  border-left: 1px solid var(--hairline);
 }
 
 .seg-btn:hover {
-  color: var(--text-dim);
+  color: var(--ink);
 }
 
+/* The active one is marked with the accent and a rule under it — the amber
+   is a signal, never a fill. */
 .seg-btn--on {
+  color: var(--accent);
+}
+
+.seg-btn--on::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
   background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset;
 }
 
 .seg-btn--on:hover {
-  color: var(--accent-ink);
+  color: var(--accent);
 }
 
 @media (max-width: 420px) {
   .seg-btn {
-    padding: 0 10px;
+    padding: 0 var(--md);
   }
 }
 </style>

@@ -84,6 +84,9 @@ The Go binary serves the API under `/api/*` and the embedded SPA for everything 
 
 ### Data model
 
+The state lives in `DATA_DIR`; the media itself can live in `LIBRARY_DIR` (its own
+volume) or next to the state when that is not set.
+
 `library.json` → `{"items":[Item]}` where
 
 ```go
@@ -237,31 +240,43 @@ added to the library. The file is never orphaned on disk.
 
 ## Frontend
 
-Vue 3 + TS + Vite + Pinia + Vue Router. Three views:
+Vue 3 + TS + Vite + Pinia + Vue Router. The interface follows the Vesper design
+reference (a near-black gallery frame):
 
-* **Download** (`/`) — URL field, the **Video / MP3** segmented toggle, a big
-  "Download" button, and the live queue with progress bars, speed, ETA, and cancel.
-  The toggle starts in the mode the server announces (`DEFAULT_MODE`) until the user
-  picks one; the choice is remembered in the browser.
-* **Library** (`/library`) — grid of downloaded items with cover art, play button,
-  duration, and a docked player bar. Audio is played in the player bar; a video
-  download opens in a new tab, where the browser shows it with its own controls.
-* **Playlists** (`/playlists`) — Google sign-in card; when signed in, the user's
-  playlists with item previews and a "Sync" button that respects the music toggle.
+* **Colour** — the page is pure black `#000`, plates are `#0a0a0a`, and the ink ladder
+  is `#e8e6e1` / `#8a8780` / `#4a4843`. There is exactly one accent, a muted amber
+  `#d4a574`, and it is only ever a signal: a label, a dot, an underline, a rule — never
+  a fill. Every hairline is the ink-faint colour; there is no separate hairline token.
+* **Type** — two voices. Instrument Serif (regular and italic) carries the editorial
+  lines: the display headline `clamp(42px, 7vw, 96px)`, the italic plate titles
+  `clamp(36px, 4.2vw, 64px)`. JetBrains Mono carries every machine label: `11px`,
+  uppercase, tracked `0.28–0.32em`. Both are served from the app itself
+  (`web/public/fonts`), not from a font CDN — a self-hosted tool should not need the
+  internet to look right.
+* **Shape** — nothing is rounded except the 6px status dots. Frames are drawn with
+  1px hairlines and 18px corner ticks, never with a filled box.
+* **Depth** — no shadows. An always-on film grain (an SVG turbulence at 6% opacity,
+  blended over) and a breathing vignette give the darkroom texture.
+* **Motion** — grain shift 7s, vignette breath 9s, accent dot pulse 2.6s, all on
+  `cubic-bezier(0.22, 1, 0.36, 1)`.
 
-Design language (must be deliberate, not generic):
+Three views:
 
-* Near-black canvas `#0a0a0b`, layered panels `#131316`, hairline borders
-  `rgba(255,255,255,.08)`, text `#f5f5f6` / muted `#8b8b94`.
-* One accent: warm amber `#f5a524` for the music identity, cool `#5b8def` for video;
-  the toggle swaps the accent. Gradients are used sparingly and only as soft radial
-  washes behind the hero, never as flat button fills.
-* Type: Inter (UI) with a tight tracking scale — 12/13/15/20/34px; large numerals for
-  progress. Tabular numerals for durations and speeds.
-* Motion: 150–250ms ease-out transitions, progress bars animate width, the player bar
-  slides up. No gratuitous parallax, no gradient text, no glassmorphism soup.
-* Responsive down to 380px; the desktop layout is a two-column shell with a fixed left
-  rail and a bottom player.
+* **Download** (`/`) — the download bar is the main thing on the page: a large serif
+  field, the source label, and the download action. The settings sit underneath it:
+  the output toggle (Video / MP3) and a line describing what the current mode does.
+  The queue follows below. The toggle starts in the mode the server announces
+  (`DEFAULT_MODE`) until the user picks one; the choice is remembered in the browser.
+* **Library** (`/library`) — the downloads as plates: the cover art in a black frame
+  that fades into the page, a roman numeral in the corner, mono meta, and an italic
+  serif title. Audio plays in the player bar; a video download opens in a new tab,
+  where the browser shows it with its own controls.
+* **Playlists** (`/playlists`) — the Google sign-in card, then the user's playlists as
+  a hairline-separated list with a "Sync →" action per playlist.
+
+The shell is a three-row frame: a topbar (wordmark · edition marker · nav), the stage,
+and a footbar with a live UTC clock, the current mode and the build. The player bar
+docks at the bottom.
 
 ## Testing
 

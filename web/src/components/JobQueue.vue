@@ -47,34 +47,27 @@ const activeCount = computed(() => jobs.activeCount)
 <template>
   <section class="queue">
     <header class="sec-head">
-      <h2 class="t-title sec-title">Queue</h2>
-      <span v-if="jobs.items.length" class="chip tnum">{{ jobs.items.length }}</span>
-      <span v-if="activeCount" class="chip chip--accent">{{ activeCount }} active</span>
+      <h2 class="t-label">Queue</h2>
+      <span v-if="jobs.items.length" class="t-meta">
+        {{ jobs.items.length }} {{ jobs.items.length === 1 ? 'entry' : 'entries' }}
+        <template v-if="activeCount"> · {{ activeCount }} active</template>
+      </span>
     </header>
 
-    <p v-if="jobs.error" class="notice notice--error">{{ jobs.error }}</p>
+    <p v-if="jobs.error" class="notice t-meta">{{ jobs.error }}</p>
 
-    <div v-if="!jobs.items.length" class="empty panel">
-      <svg width="20" height="20" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-        <path
-          d="M9 2.6v8.8m0 0 3.3-3.3M9 11.4l-3.3-3.3M3.7 14.7h10.6"
-          stroke="currentColor"
-          stroke-width="1.4"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-      <p class="t-meta muted">Nothing queued yet. Paste a link above to start.</p>
+    <div v-if="!jobs.items.length" class="empty">
+      <span class="t-meta">Nothing queued yet. Paste a link above to start.</span>
     </div>
 
     <ul v-else class="jobs">
-      <li v-for="job in jobs.items" :key="job.id" class="job" :class="`job--${job.status}`">
-        <span class="job-tag" :title="job.mode === 'music' ? 'MP3' : 'Video'">{{ modeTag(job) }}</span>
+      <li v-for="(job, index) in jobs.items" :key="job.id" class="job" :class="`job--${job.status}`">
+        <span class="job-index t-label">{{ String(index + 1).padStart(2, '0') }}</span>
 
         <div class="job-body">
           <div class="job-head">
-            <span class="job-title clamp-2">{{ job.title || job.url || 'Untitled' }}</span>
-            <span class="job-pct tnum">{{ percent(job) }}<i>%</i></span>
+            <span class="job-title t-italic">{{ job.title || job.url || 'Untitled' }}</span>
+            <span class="job-pct t-meta tnum">{{ percent(job) }}%</span>
           </div>
 
           <div
@@ -88,31 +81,28 @@ const activeCount = computed(() => jobs.activeCount)
             <span class="bar-fill" :style="{ width: `${percent(job)}%` }" />
           </div>
 
-          <p v-if="job.status === 'failed' && job.error" class="job-error">{{ job.error }}</p>
-          <p v-else class="job-meta">
-            <template v-for="(segment, index) in metaSegments(job)" :key="index">
-              <span v-if="index > 0" class="dot" aria-hidden="true" />
-              <span :class="index === 0 ? 'job-status' : 'tnum'">{{ segment }}</span>
+          <p v-if="job.status === 'failed' && job.error" class="job-error t-meta">
+            {{ job.error }}
+          </p>
+          <p v-else class="job-meta t-meta">
+            <template v-for="(segment, i) in metaSegments(job)" :key="i">
+              <span class="dot" v-if="i > 0" aria-hidden="true">·</span>
+              <span :class="{ 'job-status': i === 0 }">{{ segment }}</span>
             </template>
           </p>
         </div>
 
+        <span class="job-tag t-meta">{{ modeTag(job) }}</span>
+
         <button
           v-if="isActive(job)"
           type="button"
-          class="job-cancel"
+          class="job-cancel t-nav"
           title="Cancel download"
           aria-label="Cancel download"
           @click="jobs.cancel(job.id)"
         >
-          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-            <path
-              d="M3.5 3.5l7 7m0-7-7 7"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linecap="round"
-            />
-          </svg>
+          ×
         </button>
       </li>
     </ul>
@@ -120,79 +110,66 @@ const activeCount = computed(() => jobs.activeCount)
 </template>
 
 <style scoped>
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--xl);
+}
+
+/* --- section head -------------------------------------------------------- */
+
 .sec-head {
   display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-4);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--xxl);
+  padding-bottom: var(--lg);
+  border-bottom: 1px solid var(--hairline);
 }
 
-.sec-title {
-  margin-right: var(--sp-1);
+.sec-head .t-label {
+  color: var(--accent);
 }
+
+.sec-head .t-meta {
+  color: var(--ink-faint);
+}
+
+/* --- empty --------------------------------------------------------------- */
 
 .empty {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-5);
-  color: var(--faint);
+  padding: var(--xxl) 0;
+  border-bottom: 1px solid var(--hairline);
 }
+
+.empty .t-meta {
+  color: var(--ink-faint);
+}
+
+/* --- jobs ---------------------------------------------------------------- */
 
 .jobs {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
 }
 
 .job {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: start;
-  gap: var(--sp-4);
-  padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-4);
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-  transition:
-    border-color var(--dur) var(--ease),
-    opacity var(--dur) var(--ease);
+  gap: var(--xxl);
+  padding: var(--xl) 0;
+  border-bottom: 1px solid var(--hairline);
+  transition: background var(--dur-fast) var(--ease-out);
 }
 
 .job:hover {
-  border-color: var(--hairline-strong);
+  background: var(--plate);
 }
 
-.job--completed {
-  opacity: 0.72;
-}
-
-.job--canceled {
-  opacity: 0.5;
-}
-
-.job--failed {
-  border-color: var(--danger-line);
-}
-
-.job-tag {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--r-sm);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-line);
-  color: var(--accent);
-  font-size: var(--fs-11);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.job--failed .job-tag {
-  background: var(--danger-soft);
-  border-color: var(--danger-line);
-  color: var(--danger);
+.job-index {
+  color: var(--ink-faint);
+  padding-top: 4px;
 }
 
 .job-body {
@@ -202,152 +179,106 @@ const activeCount = computed(() => jobs.activeCount)
 .job-head {
   display: flex;
   align-items: baseline;
-  gap: var(--sp-4);
-  margin-bottom: 10px;
+  justify-content: space-between;
+  gap: var(--xxl);
 }
 
 .job-title {
-  flex: 1;
+  font-size: clamp(18px, 1.6vw, 22px);
+  color: var(--ink);
   min-width: 0;
-  font-size: var(--fs-13);
-  font-weight: 500;
-  line-height: 1.4;
-  color: var(--text);
 }
 
 .job-pct {
-  font-size: var(--fs-20);
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  color: var(--text);
+  color: var(--ink-dim);
+  flex: none;
 }
 
-.job-pct i {
-  font-style: normal;
-  font-size: var(--fs-12);
-  font-weight: 500;
-  color: var(--faint);
-  margin-left: 1px;
-}
-
-.job--failed .job-pct {
-  color: var(--danger);
-}
-
+/* The progress is a rule that fills, not a bar with a radius. */
 .bar {
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.07);
-  overflow: hidden;
+  position: relative;
+  height: 1px;
+  margin-top: var(--md);
+  background: var(--hairline);
 }
 
 .bar-fill {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--ink);
+  transition: width var(--dur-fast) var(--ease-out);
+}
+
+.job--running .bar-fill {
   background: var(--accent);
-  transition: width var(--dur-slow) var(--ease);
 }
 
-.job--completed .bar-fill {
-  background: rgba(255, 255, 255, 0.28);
-}
-
+.job--failed .bar-fill,
 .job--canceled .bar-fill {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.job--failed .bar-fill {
-  background: var(--danger);
+  background: var(--ink-faint);
 }
 
 .job-meta {
+  margin-top: var(--md);
+  color: var(--ink-faint);
   display: flex;
   align-items: center;
+  gap: var(--sm);
   flex-wrap: wrap;
-  gap: var(--sp-2);
-  margin-top: 10px;
-  font-size: var(--fs-12);
-  color: var(--muted);
+}
+
+.job-meta .dot {
+  color: var(--ink-faint);
 }
 
 .job-status {
-  color: var(--text-dim);
-  font-weight: 500;
+  color: var(--ink-dim);
 }
 
-.job--failed .job-status {
-  color: var(--danger);
-}
-
-.dot {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--faint);
+.job--running .job-status {
+  color: var(--accent);
 }
 
 .job-error {
-  margin-top: 10px;
-  font-size: var(--fs-12);
-  line-height: 1.5;
-  color: var(--danger);
+  margin-top: var(--md);
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0.04em;
   word-break: break-word;
 }
 
+.job-tag {
+  color: var(--ink-faint);
+  padding-top: 4px;
+}
+
 .job-cancel {
+  color: var(--ink-faint);
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--hairline);
-  color: var(--faint);
-  transition:
-    color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease),
-    background var(--dur-fast) var(--ease);
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .job-cancel:hover {
-  color: var(--danger);
-  border-color: var(--danger-line);
-  background: var(--danger-soft);
+  color: var(--accent);
 }
 
 .notice {
-  margin-bottom: var(--sp-4);
-  padding: 10px var(--sp-3);
-  border-radius: var(--r-sm);
-  font-size: var(--fs-12);
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0.04em;
 }
 
-.notice--error {
-  color: var(--danger);
-  background: var(--danger-soft);
-  border: 1px solid var(--danger-line);
-}
-
-@media (max-width: 560px) {
+@media (max-width: 620px) {
   .job {
-    grid-template-columns: 32px minmax(0, 1fr) auto;
-    gap: var(--sp-3);
-    padding: var(--sp-3);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--lg);
   }
 
   .job-tag {
-    width: 32px;
-    height: 32px;
-    font-size: 10px;
-  }
-
-  .job-head {
-    gap: var(--sp-2);
-  }
-
-  .job-pct {
-    font-size: var(--fs-15);
+    display: none;
   }
 }
 </style>

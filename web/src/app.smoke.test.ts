@@ -111,7 +111,11 @@ describe('app smoke', () => {
   it('renders the download view with the live queue', async () => {
     const { app, html } = await mount('/')
 
-    expect(html).toContain('Take it with you')
+    // The download bar is the main thing, the settings sit underneath it.
+    expect(html).toContain('https://www.youtube.com/watch?v=…')
+    expect(html).toContain('Download')
+    expect(html).toContain('Output')
+
     expect(html).toContain('Blinding Lights')
     expect(html).toContain('aria-valuenow="43"')
     expect(html).toContain('style="width: 43%;"')

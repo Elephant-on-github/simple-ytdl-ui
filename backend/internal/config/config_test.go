@@ -101,6 +101,31 @@ func TestLoadInvalidNumbersFallBackToDefaults(t *testing.T) {
 	}
 }
 
+func TestLibraryDirIsItsOwnVolume(t *testing.T) {
+	t.Setenv("DATA_DIR", "/data")
+	t.Setenv("LIBRARY_DIR", "/library")
+
+	cfg := Load()
+
+	if cfg.LibraryDir != "/library" {
+		t.Errorf("LibraryDir = %q, want /library", cfg.LibraryDir)
+	}
+	if got := cfg.MediaDir(); got != "/library" {
+		t.Errorf("MediaDir = %q, want /library", got)
+	}
+}
+
+func TestMediaDirFallsBackToTheDataDir(t *testing.T) {
+	t.Setenv("DATA_DIR", "/data")
+	t.Setenv("LIBRARY_DIR", "")
+
+	cfg := Load()
+
+	if got := cfg.MediaDir(); got != "/data" {
+		t.Errorf("MediaDir = %q, want /data", got)
+	}
+}
+
 func TestGoogleEnabled(t *testing.T) {
 	tests := []struct {
 		name   string

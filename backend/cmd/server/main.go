@@ -63,7 +63,9 @@ func newServer(cfg config.Config) (http.Handler, error) {
 
 	st := store.New(cfg.DataDir)
 	runner := ytdlp.NewRunner(cfg.YtDlpBin).WithFfmpeg(cfg.FfmpegBin)
-	mgr := download.NewManager(runner, st, cfg.DataDir, cfg.ConcurrentDownloads)
+	// The media can live on its own volume: LIBRARY_DIR if it is set,
+	// the data directory otherwise.
+	mgr := download.NewManager(runner, st, cfg.MediaDir(), cfg.ConcurrentDownloads)
 
 	return api.New(cfg, st, mgr, nil).Handler(), nil
 }

@@ -466,6 +466,43 @@ func TestEnqueueingManyEntriesDoesNotBlock(t *testing.T) {
 	}
 }
 
+func TestQueuingTheSameVideoInAnotherModeLeavesTheFirstJobAlone(t *testing.T) {
+	// The video download of a video must not be cancelled when the same
+	// video is queued as an MP3 while the first one is still running.
+	f := newFixture(t, fakeytdlp.ModeSleep)
+	url := "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+	first, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeVideo, false)
+	if err != nil {
+		t.Fatalf("Enqueue (video): %v", err)
+	}
+
+	// Wait until the video job is really running.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		j, ok := jobByID(f.manager.Jobs(), first[0].ID)
+		if ok && j.Status == store.StatusRunning {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the video job never started")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if _, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeMusic, false); err != nil {
+		t.Fatalf("Enqueue (music): %v", err)
+	}
+
+	j, ok := jobByID(f.manager.Jobs(), first[0].ID)
+	if !ok {
+		t.Fatal("the video job disappeared")
+	}
+	if j.Status != store.StatusRunning {
+		t.Fatalf("the video job is %q, want it to keep running", j.Status)
+	}
+}
+
 func TestSyncingTheSamePlaylistTwiceDoesNotDownloadTwice(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeOK)
 	url := "https://www.youtube.com/playlist?list=PLfake"

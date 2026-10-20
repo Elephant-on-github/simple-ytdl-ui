@@ -14,6 +14,13 @@ const broken = ref<Set<string>>(new Set())
 const confirming = ref<string | null>(null)
 let confirmTimer: ReturnType<typeof setTimeout> | undefined
 
+/** The plate number, in roman. */
+function roman(index: number): string {
+  const numerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
+  if (index < numerals.length) return numerals[index]
+  return String(index + 1)
+}
+
 function markBroken(id: string): void {
   const next = new Set(broken.value)
   next.add(id)
@@ -49,254 +56,189 @@ function open(item: Item): void {
 </script>
 
 <template>
-  <ul class="grid">
-    <li v-for="item in items" :key="item.id" class="card">
-      <div class="cover" :class="{ 'cover--broken': broken.has(item.id) }">
+  <ul class="plates">
+    <li v-for="(item, index) in items" :key="item.id" class="plate">
+      <div class="art frame" :class="{ 'art--broken': broken.has(item.id) }">
+        <span class="tick tick--tl" aria-hidden="true" />
+        <span class="tick tick--tr" aria-hidden="true" />
+        <span class="tick tick--bl" aria-hidden="true" />
+        <span class="tick tick--br" aria-hidden="true" />
+
         <img
           v-if="!broken.has(item.id)"
-          class="cover-img"
+          class="art-img"
           :src="api.coverUrl(item.id)"
           :alt="item.title"
           loading="lazy"
           @error="markBroken(item.id)"
         />
-        <span v-else class="cover-fallback" aria-hidden="true">
-          <svg v-if="item.mode === 'music'" width="22" height="22" viewBox="0 0 18 18" fill="none">
-            <path
-              d="M6.4 12.6V4.2l7-1.2v8.4"
-              stroke="currentColor"
-              stroke-width="1.4"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-            <circle cx="4.6" cy="12.8" r="1.9" stroke="currentColor" stroke-width="1.4" />
-            <circle cx="11.6" cy="11.6" r="1.9" stroke="currentColor" stroke-width="1.4" />
-          </svg>
-          <svg v-else width="22" height="22" viewBox="0 0 18 18" fill="none">
-            <rect
-              x="2.4"
-              y="4.2"
-              width="13.2"
-              height="9.6"
-              rx="2"
-              stroke="currentColor"
-              stroke-width="1.4"
-            />
-            <path d="M8 7.2 11.6 9 8 10.8V7.2Z" fill="currentColor" />
-          </svg>
-        </span>
+        <span v-else class="art-fallback t-meta">No Cover</span>
 
-        <span class="cover-time tnum">{{ formatDuration(item.duration) }}</span>
-
-        <button
-          type="button"
-          class="cover-play"
-          :aria-label="`${isVideo(item) ? 'Watch' : 'Play'} ${item.title}`"
-          @click="open(item)"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M5 3.4 12.4 8 5 12.6V3.4Z" fill="currentColor" />
-          </svg>
-        </button>
-
-        <button
-          type="button"
-          class="cover-remove"
-          :class="{ 'cover-remove--confirm': confirming === item.id }"
-          :aria-label="`Delete ${item.title}`"
-          @click.stop="askRemove(item)"
-        >
-          <template v-if="confirming === item.id">
-            <span class="cover-remove-label">Sure?</span>
-          </template>
-          <svg v-else width="14" height="14" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-            <path
-              d="M4.6 5.6h8.8M7.4 5.6V4.4h3.2v1.2M6 5.6l.6 8.2h4.8l.6-8.2M7.6 8v3.6M10.4 8v3.6"
-              stroke="currentColor"
-              stroke-width="1.4"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </button>
+        <span class="art-numeral" aria-hidden="true">{{ roman(index) }}</span>
+        <span class="art-time t-meta tnum">{{ formatDuration(item.duration) }}</span>
       </div>
 
       <div class="meta">
-        <p class="title clamp-2">{{ item.title }}</p>
-        <p class="artist truncate">
-          <span v-if="item.artist">{{ item.artist }}</span>
-          <span v-else class="faint">Unknown artist</span>
+        <div class="meta-top">
+          <span class="t-label">{{ item.mode === 'music' ? 'MP3' : 'MP4' }}</span>
+          <button
+            type="button"
+            class="remove t-nav"
+            :class="{ 'remove--confirm': confirming === item.id }"
+            :aria-label="`Delete ${item.title}`"
+            @click="askRemove(item)"
+          >
+            {{ confirming === item.id ? 'Sure?' : 'Delete' }}
+          </button>
+        </div>
+
+        <h3 class="title t-plate-title">{{ item.title }}</h3>
+        <p class="artist t-meta truncate">
+          <template v-if="item.artist">{{ item.artist }}</template>
+          <template v-else>Unknown artist</template>
         </p>
+
+        <button type="button" class="step plate-action" @click="open(item)">
+          {{ isVideo(item) ? 'Watch' : 'Play' }}
+          <span aria-hidden="true">→</span>
+        </button>
       </div>
     </li>
   </ul>
 </template>
 
 <style scoped>
-.grid {
+.plates {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
-  gap: var(--sp-6) var(--sp-5);
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--gap) var(--xxl);
 }
 
-.card {
+/* --- the plate ----------------------------------------------------------- */
+
+.plate {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg);
 }
 
-.cover {
+/* The art frame: a plate of black with the cover in it. */
+.art {
   position: relative;
   aspect-ratio: 1;
-  border-radius: var(--r-lg);
+  background: var(--plate);
   overflow: hidden;
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  transition:
-    border-color var(--dur) var(--ease),
-    transform var(--dur) var(--ease);
 }
 
-.card:hover .cover {
-  border-color: var(--hairline-strong);
-}
-
-.cover-img {
+.art-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 1.2s var(--ease-out);
 }
 
-.cover--broken {
+.plate:hover .art-img {
+  transform: scale(1.04);
+}
+
+/* The artwork fades into the page at the top and the bottom. */
+.art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(0, 0, 0, 0) 26%,
+    rgba(0, 0, 0, 0) 62%,
+    rgba(0, 0, 0, 0.78) 100%
+  );
+}
+
+.art-fallback {
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
-  background:
-    radial-gradient(120% 90% at 50% 0%, var(--accent-wash), transparent 70%),
-    var(--panel-raised);
+  color: var(--ink-faint);
+  letter-spacing: 0.32em;
+}
+
+/* The roman numeral sits inside the plate. */
+.art-numeral {
+  position: absolute;
+  left: var(--lg);
+  bottom: var(--lg);
+  z-index: 1;
+  font-family: var(--serif);
+  font-size: clamp(28px, 3.4vw, 46px);
+  line-height: 0.95;
+  color: var(--roman-overlay);
+  text-shadow: 0 0 16px rgba(0, 0, 0, 0.45);
+}
+
+.art-time {
+  position: absolute;
+  right: var(--lg);
+  bottom: var(--lg);
+  z-index: 1;
+  color: var(--roman-overlay);
+}
+
+/* --- meta ---------------------------------------------------------------- */
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sm);
+}
+
+.meta-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lg);
+}
+
+.meta-top .t-label {
   color: var(--accent);
 }
 
-.cover-fallback {
-  opacity: 0.8;
+.remove {
+  color: var(--ink-faint);
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
-.cover-time {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  padding: 2px 6px;
-  border-radius: var(--r-xs);
-  background: rgba(0, 0, 0, 0.66);
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 11px;
-  line-height: 1.5;
-  letter-spacing: 0.01em;
+.remove:hover {
+  color: var(--accent);
 }
 
-.cover-play {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  translate: -50% -50%;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  opacity: 0;
-  scale: 0.9;
-  transition:
-    opacity var(--dur) var(--ease),
-    scale var(--dur) var(--ease),
-    filter var(--dur) var(--ease);
-}
-
-.cover-play svg {
-  margin-left: 2px;
-}
-
-.card:hover .cover-play,
-.cover-play:focus-visible {
-  opacity: 1;
-  scale: 1;
-}
-
-.cover-play:hover {
-  filter: brightness(1.08);
-}
-
-.cover-remove {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: grid;
-  place-items: center;
-  min-width: 26px;
-  height: 26px;
-  padding: 0 6px;
-  border-radius: var(--r-sm);
-  background: rgba(0, 0, 0, 0.62);
-  color: rgba(255, 255, 255, 0.72);
-  opacity: 0;
-  transition:
-    opacity var(--dur) var(--ease),
-    color var(--dur-fast) var(--ease),
-    background var(--dur-fast) var(--ease);
-}
-
-.card:hover .cover-remove,
-.cover-remove:focus-visible,
-.cover-remove--confirm {
-  opacity: 1;
-}
-
-.cover-remove:hover {
-  color: var(--danger);
-  background: rgba(0, 0, 0, 0.78);
-}
-
-.cover-remove--confirm {
-  background: var(--danger);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.cover-remove-label {
-  white-space: nowrap;
-}
-
-.meta {
-  padding: 10px 2px 0;
+.remove--confirm {
+  color: var(--accent);
 }
 
 .title {
-  font-size: var(--fs-13);
-  font-weight: 500;
-  line-height: 1.4;
-  letter-spacing: -0.004em;
-  color: var(--text);
+  color: var(--ink);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.plate:hover .title {
+  color: var(--accent);
 }
 
 .artist {
-  margin-top: 3px;
-  font-size: var(--fs-12);
-  color: var(--muted);
+  color: var(--ink-faint);
 }
 
-@media (hover: none) {
-  .cover-play,
-  .cover-remove {
-    opacity: 1;
-    scale: 1;
-  }
+.plate-action {
+  margin-top: var(--md);
+  align-self: flex-start;
+  color: var(--ink-dim);
 }
 
-@media (max-width: 560px) {
-  .grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: var(--sp-5) var(--sp-4);
-  }
+.plate:hover .plate-action {
+  color: var(--ink);
 }
 </style>

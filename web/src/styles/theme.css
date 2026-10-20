@@ -1,87 +1,68 @@
 /* ---------------------------------------------------------------------------
    simple-ytdl-ui — design tokens
-   One source of truth for surface, ink, accent, type, space and motion.
-   The accent swaps with the download mode (data-mode on <html>); components
-   never hard-code a colour.
+
+   A near-black gallery frame: pure black, warm parchment ink, one muted amber
+   used only as a signal, Instrument Serif for the editorial voice and
+   JetBrains Mono for every machine label.
+
+   Nothing here is rounded. Frames are drawn with hairlines, not fills, and
+   depth comes from grain and a vignette rather than shadows.
    --------------------------------------------------------------------------- */
 
 :root {
   color-scheme: dark;
 
-  /* surfaces — layered, never pure white on pure black */
-  --canvas: #0a0a0b;
-  --rail: #0c0c0e;
-  --panel: #131316;
-  --panel-raised: #17171b;
-  --panel-sunken: #0e0e11;
+  /* --- surface --- */
+  --bg: #000000;
+  --plate: #0a0a0a;
+  --plate-raised: #111110;
 
-  /* hairlines */
-  --hairline: rgba(255, 255, 255, 0.08);
-  --hairline-strong: rgba(255, 255, 255, 0.16);
+  /* --- ink --- */
+  --ink: #e8e6e1;
+  --ink-dim: #8a8780;
+  --ink-faint: #4a4843;
 
-  /* ink */
-  --text: #f5f5f6;
-  --text-dim: #b6b6be;
-  --muted: #8b8b94;
-  --faint: #5f5f69;
+  /* --- the one accent --- */
+  --accent: #d4a574;
+  --accent-soft: rgba(212, 165, 116, 0.18);
+  --accent-line: rgba(212, 165, 116, 0.42);
+  --roman-overlay: rgba(245, 240, 232, 0.55);
 
-  /* accent — video (cool blue) is the default identity */
-  --accent: #5b8def;
-  --accent-ink: #07080b;
-  --accent-soft: rgba(91, 141, 239, 0.13);
-  --accent-line: rgba(91, 141, 239, 0.4);
-  --accent-wash: rgba(91, 141, 239, 0.22);
+  /* hairlines are the ink-faint colour, there is no separate one */
+  --hairline: #4a4843;
 
-  /* status */
-  --danger: #f87171;
-  --danger-soft: rgba(248, 113, 113, 0.12);
-  --danger-line: rgba(248, 113, 113, 0.34);
+  /* --- type --- */
+  --serif: 'Instrument Serif', 'Times New Roman', Times, serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* type */
-  --font: 'Inter var', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    Helvetica, Arial, sans-serif;
-  --fs-11: 11px;
-  --fs-12: 12px;
-  --fs-13: 13px;
-  --fs-15: 15px;
-  --fs-20: 20px;
-  --fs-34: 34px;
+  --fs-display: clamp(42px, 7vw, 96px);
+  --fs-display-italic: clamp(36px, 4.2vw, 64px);
+  --fs-manifesto: clamp(44px, 7.6vw, 124px);
+  --fs-numeral: clamp(60px, 9vw, 132px);
+  --fs-wordmark: clamp(20px, 2.3vw, 28px);
+  --fs-body: clamp(18px, 1.4vw, 22px);
+  --fs-label: 10px;
+  --fs-nav: 11px;
 
-  /* space */
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
-  --sp-5: 20px;
-  --sp-6: 24px;
-  --sp-7: 32px;
-  --sp-8: 40px;
-  --sp-9: 56px;
+  /* --- space --- */
+  --xxs: 2px;
+  --xs: 4px;
+  --sm: 6px;
+  --md: 10px;
+  --lg: 14px;
+  --xl: 18px;
+  --xxl: 24px;
+  --pad-x: clamp(20px, 4vw, 56px);
+  --pad-y: clamp(14px, 2.2vw, 28px);
+  --gap: clamp(40px, 6vw, 120px);
 
-  /* radii */
-  --r-xs: 4px;
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
-  --r-xl: 18px;
-  --r-full: 999px;
+  /* --- shape --- */
+  --tick: 18px; /* the length of a frame corner tick */
+  --dot: 6px; /* the only round thing in the system */
 
-  /* motion */
-  --dur-fast: 150ms;
-  --dur: 200ms;
-  --dur-slow: 250ms;
-  --ease: cubic-bezier(0.16, 0.84, 0.44, 1);
-
-  /* layout */
-  --rail-w: 236px;
-  --player-h: 76px;
-  --content-max: 1120px;
-}
-
-/* music identity — warm amber */
-[data-mode='music'] {
-  --accent: #f5a524;
-  --accent-soft: rgba(245, 165, 36, 0.12);
-  --accent-line: rgba(245, 165, 36, 0.42);
-  --accent-wash: rgba(245, 165, 36, 0.22);
+  /* --- motion --- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur: 520ms;
+  --dur-fast: 240ms;
 }

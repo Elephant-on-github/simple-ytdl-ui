@@ -10,6 +10,7 @@ import (
 type Config struct {
 	Port                int
 	DataDir             string
+	LibraryDir          string
 	YtDlpBin            string
 	FfmpegBin           string
 	GoogleClientID      string
@@ -28,6 +29,7 @@ func Load() Config {
 	return Config{
 		Port:                envInt("PORT", 8080),
 		DataDir:             envString("DATA_DIR", "/data"),
+		LibraryDir:          os.Getenv("LIBRARY_DIR"),
 		YtDlpBin:            envString("YTDLP_BIN", "yt-dlp"),
 		FfmpegBin:           envString("FFMPEG_BIN", "ffmpeg"),
 		GoogleClientID:      os.Getenv("GOOGLE_CLIENT_ID"),
@@ -37,6 +39,16 @@ func Load() Config {
 		DefaultMode:         envString("DEFAULT_MODE", "video"),
 		WebDir:              os.Getenv("WEB_DIR"),
 	}
+}
+
+// MediaDir is where the downloaded files are stored. It is the library
+// directory when one is configured, so the media can live on its own volume,
+// and the data directory otherwise.
+func (c Config) MediaDir() string {
+	if c.LibraryDir != "" {
+		return c.LibraryDir
+	}
+	return c.DataDir
 }
 
 // GoogleEnabled reports whether Google sign-in is configured. Both the client

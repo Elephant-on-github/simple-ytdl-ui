@@ -13,7 +13,7 @@ const url = ref('')
 const error = ref('')
 const submitting = ref(false)
 
-let timer: number | undefined
+let timer: ReturnType<typeof setInterval> | undefined
 
 function tick(): void {
   // The queue is only worth polling while something is in flight.
@@ -22,11 +22,11 @@ function tick(): void {
 
 onMounted(() => {
   void jobs.refresh()
-  timer = window.setInterval(tick, 1000)
+  timer = setInterval(tick, 1000)
 })
 
 onUnmounted(() => {
-  if (timer) window.clearInterval(timer)
+  if (timer) clearInterval(timer)
 })
 
 async function submit(): Promise<void> {
@@ -56,71 +56,53 @@ async function submit(): Promise<void> {
 
 <template>
   <div class="view">
-    <section class="hero">
-      <span class="hero-wash" aria-hidden="true" />
-      <span class="hero-wash hero-wash--right" aria-hidden="true" />
+    <!-- The download bar is the main thing on this page. -->
+    <section class="console frame">
+      <span class="tick tick--tl" aria-hidden="true" />
+      <span class="tick tick--tr" aria-hidden="true" />
+      <span class="tick tick--bl" aria-hidden="true" />
+      <span class="tick tick--br" aria-hidden="true" />
 
-      <p class="eyebrow">
-        <span class="eyebrow-dot" aria-hidden="true" />
-        Paste a link
-      </p>
-
-      <h1 class="t-display hero-title">Take it with you,<br />in the quality you want.</h1>
-
-      <p class="lede t-body">
-        <template v-if="mode.mode === 'music'">
-          Any YouTube video or playlist, pulled as a <strong>best-quality MP3</strong> with cover art
-          and tags baked in.
-        </template>
-        <template v-else>
-          Any YouTube video or playlist. Keep the <strong>original video</strong>, or pull a
-          best-quality MP3 with cover art and tags baked in.
-        </template>
-      </p>
-
-      <form class="entry" @submit.prevent="submit">
-        <div class="entry-field">
-          <svg
-            class="entry-icon"
-            width="16"
-            height="16"
-            viewBox="0 0 18 18"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path
-              d="M6.6 11.4V3.8l7-1.2v7.6"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-            <circle cx="4.8" cy="11.6" r="1.9" stroke="currentColor" stroke-width="1.5" />
-            <circle cx="11.8" cy="10.4" r="1.9" stroke="currentColor" stroke-width="1.5" />
-          </svg>
-          <input
-            v-model="url"
-            class="field entry-input"
-            type="text"
-            inputmode="url"
-            spellcheck="false"
-            autocomplete="off"
-            placeholder="https://www.youtube.com/watch?v=…"
-            aria-label="YouTube URL"
-            @input="error = ''"
-          />
-        </div>
-
-        <ModeToggle />
-
-        <button type="submit" class="btn btn--primary entry-go" :disabled="submitting">
-          {{ submitting ? 'Starting…' : 'Download' }}
+      <form class="bar" @submit.prevent="submit">
+        <label class="t-label bar-label" for="download-url">Source</label>
+        <input
+          id="download-url"
+          v-model="url"
+          class="bar-input"
+          type="text"
+          inputmode="url"
+          spellcheck="false"
+          autocomplete="off"
+          placeholder="https://www.youtube.com/watch?v=…"
+          aria-label="YouTube URL"
+          @input="error = ''"
+        />
+        <button type="submit" class="bar-go" :disabled="submitting">
+          <span class="bar-go-text">{{ submitting ? 'Starting' : 'Download' }}</span>
+          <span class="bar-go-arrow" aria-hidden="true">→</span>
         </button>
       </form>
 
-      <p v-if="error" class="entry-error t-fine">{{ error }}</p>
-      <p v-else class="entry-hint t-fine">
-        Works with youtube.com, youtu.be and <code>playlist?list=</code> links.
+      <!-- The settings sit underneath the bar. -->
+      <div class="settings">
+        <div class="setting">
+          <span class="t-label setting-label">Output</span>
+          <ModeToggle />
+        </div>
+
+        <p class="setting-note t-meta">
+          <template v-if="mode.mode === 'music'">
+            Best quality MP3, cover art and tags included
+          </template>
+          <template v-else>
+            Original video, best available quality
+          </template>
+        </p>
+      </div>
+
+      <p v-if="error" class="note note--error t-meta">{{ error }}</p>
+      <p v-else class="note t-meta">
+        Works with youtube.com, youtu.be and playlist?list= links
       </p>
     </section>
 
@@ -132,159 +114,141 @@ async function submit(): Promise<void> {
 .view {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-8);
-  max-width: var(--content-max);
+  gap: var(--gap);
 }
 
-/* --- hero ---------------------------------------------------------------- */
+/* --- the console --------------------------------------------------------- */
 
-.hero {
-  position: relative;
-  overflow: hidden;
-  padding: var(--sp-8) var(--sp-8) var(--sp-7);
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-xl);
+.console {
+  display: flex;
+  flex-direction: column;
+  gap: var(--xl);
+  padding: clamp(24px, 4vw, 56px) clamp(20px, 3.4vw, 48px) clamp(20px, 3vw, 40px);
+  background: var(--plate);
 }
 
-.hero-wash {
-  position: absolute;
-  top: -220px;
-  left: -140px;
-  width: 620px;
-  height: 480px;
-  pointer-events: none;
-  background: radial-gradient(closest-side, var(--accent-wash), transparent 72%);
-  opacity: 0.85;
+/* --- the bar ------------------------------------------------------------- */
+
+.bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--xl);
+  padding-bottom: var(--xl);
+  border-bottom: 1px solid var(--hairline);
 }
 
-.hero-wash--right {
-  top: -280px;
-  left: auto;
-  right: -200px;
-  width: 520px;
-  height: 420px;
-  opacity: 0.4;
+.bar-label {
+  color: var(--ink-faint);
 }
 
-.eyebrow {
-  position: relative;
+/* The field is the loudest thing on the page. */
+.bar-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: clamp(24px, 3.4vw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.bar-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.bar-input:focus {
+  outline: none;
+}
+
+.bar-go {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: var(--fs-12);
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  gap: var(--md);
+  padding: var(--md) var(--xl);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: var(--fs-nav);
+  font-weight: 400;
+  letter-spacing: 0.28em;
   text-transform: uppercase;
-  color: var(--muted);
+  white-space: nowrap;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 
-.eyebrow-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+.bar-go:hover:not(:disabled) {
   background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  color: var(--bg);
 }
 
-.hero-title {
-  position: relative;
-  margin-top: var(--sp-4);
-  max-width: 24ch;
+.bar-go:disabled {
+  border-color: var(--hairline);
+  color: var(--ink-faint);
+  cursor: progress;
 }
 
-.lede {
-  position: relative;
-  margin-top: var(--sp-4);
-  max-width: 54ch;
-  color: var(--muted);
+.bar-go-arrow {
+  transition: transform var(--dur) var(--ease-out);
 }
 
-.lede strong {
-  color: var(--text-dim);
-  font-weight: 500;
+.bar-go:hover:not(:disabled) .bar-go-arrow {
+  transform: translateX(8px);
 }
 
-/* --- entry --------------------------------------------------------------- */
+/* --- settings ------------------------------------------------------------ */
 
-.entry {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--sp-3);
-  margin-top: var(--sp-7);
-}
-
-.entry-field {
-  position: relative;
+.settings {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: var(--xxl);
+  flex-wrap: wrap;
 }
 
-.entry-icon {
-  position: absolute;
-  left: 14px;
-  color: var(--faint);
-  pointer-events: none;
-  transition: color var(--dur-fast) var(--ease);
+.setting {
+  display: flex;
+  align-items: center;
+  gap: var(--xl);
 }
 
-.entry-field:focus-within .entry-icon {
+.setting-label {
+  color: var(--ink-faint);
+}
+
+.setting-note {
+  color: var(--ink-faint);
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+/* --- note ---------------------------------------------------------------- */
+
+.note {
+  color: var(--ink-faint);
+}
+
+.note--error {
   color: var(--accent);
 }
 
-.entry-input {
-  padding-left: 40px;
-  font-size: var(--fs-15);
-}
-
-.entry-go {
-  min-width: 118px;
-  height: 46px;
-}
-
-.entry-hint {
-  position: relative;
-  margin-top: var(--sp-3);
-  color: var(--faint);
-}
-
-.entry-hint code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
-  padding: 1px 5px;
-  border-radius: var(--r-xs);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--muted);
-}
-
-.entry-error {
-  position: relative;
-  margin-top: var(--sp-3);
-  color: var(--danger);
-}
-
 @media (max-width: 720px) {
-  .hero {
-    padding: var(--sp-6) var(--sp-5) var(--sp-6);
-  }
-
-  .hero-title {
-    max-width: none;
-  }
-
-  .entry {
+  .bar {
     grid-template-columns: minmax(0, 1fr);
-    justify-items: stretch;
+    gap: var(--lg);
   }
 
-  .entry :deep(.seg) {
-    justify-self: start;
+  .bar-label {
+    order: -1;
   }
 
-  .entry-go {
-    width: 100%;
+  .bar-go {
+    justify-content: space-between;
   }
 }
 </style>

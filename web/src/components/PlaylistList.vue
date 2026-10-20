@@ -52,7 +52,12 @@ function markBroken(id: string): void {
   <ul class="playlists">
     <li v-for="playlist in playlists" :key="playlist.id" class="pl">
       <div class="pl-row">
-        <button type="button" class="pl-toggle" :aria-expanded="openId === playlist.id" @click="toggle(playlist)">
+        <button
+          type="button"
+          class="pl-toggle"
+          :aria-expanded="openId === playlist.id"
+          @click="toggle(playlist)"
+        >
           <span class="pl-thumb" :class="{ 'pl-thumb--broken': brokenThumbs.has(playlist.id) }">
             <img
               v-if="!brokenThumbs.has(playlist.id)"
@@ -61,19 +66,12 @@ function markBroken(id: string): void {
               loading="lazy"
               @error="markBroken(playlist.id)"
             />
-            <svg v-else width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-              <path
-                d="M4.4 5h10M4.4 9h10M4.4 13h6.4"
-                stroke="currentColor"
-                stroke-width="1.4"
-                stroke-linecap="round"
-              />
-            </svg>
+            <span v-else class="t-label">No Cover</span>
           </span>
 
           <span class="pl-text">
-            <span class="pl-title truncate">{{ playlist.title }}</span>
-            <span class="pl-count tnum">
+            <span class="pl-title t-italic">{{ playlist.title }}</span>
+            <span class="pl-count t-meta tnum">
               {{ playlist.itemCount }} {{ playlist.itemCount === 1 ? 'item' : 'items' }}
             </span>
           </span>
@@ -92,46 +90,41 @@ function markBroken(id: string): void {
         </button>
 
         <div class="pl-actions">
-          <span class="chip">{{ mode === 'music' ? 'MP3' : 'Video' }}</span>
+          <span class="t-label">{{ mode === 'music' ? 'MP3' : 'MP4' }}</span>
           <button
             type="button"
-            class="btn btn--sync"
+            class="step"
             :disabled="busy === playlist.id"
             @click="emit('sync', playlist)"
           >
-            <svg width="14" height="14" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-              <path
-                d="M9 2.8v8.4m0 0 3.2-3.2M9 11.2l-3.2-3.2M3.8 14.4h10.4"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-            {{ busy === playlist.id ? 'Syncing…' : 'Sync' }}
+            {{ busy === playlist.id ? 'Syncing' : 'Sync' }}
+            <span aria-hidden="true">→</span>
           </button>
         </div>
       </div>
 
       <Transition name="expand">
         <div v-if="openId === playlist.id" class="pl-preview">
-          <p v-if="loadingId === playlist.id" class="t-fine faint">Loading items…</p>
-          <p v-else-if="!previews[playlist.id]?.length" class="t-fine faint">No items to preview.</p>
+          <p v-if="loadingId === playlist.id" class="t-meta faint">Loading items…</p>
+          <p v-else-if="!previews[playlist.id]?.length" class="t-meta faint">
+            No items to preview.
+          </p>
           <ul v-else class="pl-items">
             <li v-for="entry in previews[playlist.id]" :key="entry.id" class="pl-item">
-              <span class="pl-item-title truncate">{{ entry.title }}</span>
-              <span class="pl-item-channel truncate">{{ entry.channel }}</span>
-              <span class="pl-item-time tnum">{{ formatDuration(entry.duration) }}</span>
+              <span class="pl-item-title t-serif-body truncate">{{ entry.title }}</span>
+              <span class="pl-item-channel t-meta truncate">{{ entry.channel }}</span>
+              <span class="pl-item-time t-meta tnum">{{ formatDuration(entry.duration) }}</span>
             </li>
           </ul>
           <button
             v-if="nextTokens[playlist.id]"
             type="button"
-            class="btn btn--ghost pl-more"
+            class="step pl-more"
             :disabled="loadingId === playlist.id"
             @click="loadPage(playlist.id, nextTokens[playlist.id])"
           >
-            {{ loadingId === playlist.id ? 'Loading…' : 'Show more' }}
+            Show more
+            <span aria-hidden="true">→</span>
           </button>
         </div>
       </Transition>
@@ -143,31 +136,23 @@ function markBroken(id: string): void {
 .playlists {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
 }
 
 .pl {
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-  background: var(--panel);
-  transition: border-color var(--dur) var(--ease);
-}
-
-.pl:hover {
-  border-color: var(--hairline-strong);
+  border-bottom: 1px solid var(--hairline);
 }
 
 .pl-row {
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
-  padding: var(--sp-3) var(--sp-4);
+  gap: var(--xxl);
+  padding: var(--xl) 0;
 }
 
 .pl-toggle {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--xl);
   flex: 1;
   min-width: 0;
   text-align: left;
@@ -176,14 +161,13 @@ function markBroken(id: string): void {
 .pl-thumb {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
   flex: none;
-  border-radius: var(--r-sm);
   overflow: hidden;
-  background: var(--panel-raised);
+  background: var(--plate);
   border: 1px solid var(--hairline);
-  color: var(--faint);
+  color: var(--ink-faint);
 }
 
 .pl-thumb img {
@@ -201,20 +185,23 @@ function markBroken(id: string): void {
 }
 
 .pl-title {
-  font-size: var(--fs-13);
-  font-weight: 500;
-  color: var(--text);
+  font-size: clamp(18px, 1.6vw, 24px);
+  color: var(--ink);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.pl-toggle:hover .pl-title {
+  color: var(--accent);
 }
 
 .pl-count {
-  font-size: var(--fs-12);
-  color: var(--muted);
+  color: var(--ink-faint);
 }
 
 .pl-caret {
   flex: none;
-  color: var(--faint);
-  transition: transform var(--dur) var(--ease);
+  color: var(--ink-faint);
+  transition: transform var(--dur) var(--ease-out);
 }
 
 .pl-caret--open {
@@ -224,79 +211,57 @@ function markBroken(id: string): void {
 .pl-actions {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--xxl);
   flex: none;
 }
 
-.btn--sync {
-  height: 32px;
-  padding: 0 12px;
-  color: var(--text-dim);
+.pl-actions .t-label {
+  color: var(--accent);
 }
 
-.btn--sync:hover {
-  color: var(--accent);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
+/* --- preview ------------------------------------------------------------- */
 
 .pl-preview {
-  border-top: 1px solid var(--hairline);
-  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  padding: 0 0 var(--xl);
 }
 
 .pl-items {
   display: flex;
   flex-direction: column;
-  gap: 1px;
 }
 
 .pl-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px 46px;
-  gap: var(--sp-3);
+  gap: var(--lg);
   align-items: center;
-  padding: 6px 0;
-  font-size: var(--fs-12);
-  color: var(--text-dim);
+  padding: var(--sm) 0;
+  border-bottom: 1px solid rgba(74, 72, 67, 0.35);
 }
 
-.pl-item + .pl-item {
-  border-top: 1px solid rgba(255, 255, 255, 0.045);
+.pl-item-title {
+  font-size: 15px;
+  color: var(--ink-dim);
 }
 
 .pl-item-channel {
-  color: var(--faint);
+  color: var(--ink-faint);
 }
 
 .pl-item-time {
   text-align: right;
-  color: var(--muted);
+  color: var(--ink-faint);
 }
 
 .pl-more {
-  height: 30px;
-  margin-top: var(--sp-3);
-  font-size: var(--fs-12);
-}
-
-.expand-enter-active,
-.expand-leave-active {
-  transition:
-    opacity var(--dur) var(--ease),
-    transform var(--dur) var(--ease);
-}
-
-.expand-enter-from,
-.expand-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
+  margin-top: var(--lg);
+  color: var(--ink-dim);
 }
 
 @media (max-width: 620px) {
   .pl-row {
     flex-wrap: wrap;
-    gap: var(--sp-3);
+    gap: var(--lg);
   }
 
   .pl-actions {
