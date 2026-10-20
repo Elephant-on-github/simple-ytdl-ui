@@ -115,7 +115,9 @@ fi
 echo "dl|downloading|5242880|10485760|1048576.5|3"
 echo "dl|finished|10485760|10485760|0|0"
 
-if not "%FAKE_YTDLP_COUNT%"=="" echo download>>"%FAKE_YTDLP_COUNT%"
+if [ -n "${FAKE_YTDLP_COUNT:-}" ]; then
+  echo download >> "$FAKE_YTDLP_COUNT"
+fi
 
 if [ "$mode" = "sleep" ]; then
   sleep 30

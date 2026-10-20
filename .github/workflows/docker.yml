@@ -98,3 +98,25 @@ jobs:
             VERSION=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # A container package is private by default. The point of this workflow
+      # is that anybody can pull the image, so it is made public.
+      - name: Make the package public
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          NAME: simple-ytdl-ui
+        run: |
+          status=$(curl -sS -o /tmp/visibility.json -w '%{http_code}' \
+            -X PATCH \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/users/${OWNER}/packages/container/${NAME}" \
+            -d '{"visibility":"public"}')
+          echo "visibility change: HTTP ${status}"
+          cat /tmp/visibility.json
+          if [ "${status}" != "200" ]; then
+            echo "::warning::could not change the package visibility, set it by hand in the package settings"
+          fi
