@@ -57,9 +57,26 @@ docker compose -f docker-compose.build.yml up -d --build
 | `sha-abc1234` | the build of a single commit |
 
 The image is built and published by `.github/workflows/docker.yml` on every push to
-`main`. A container package is private by default; the workflow makes it public, and
-if that ever fails, flip the visibility once in the package settings
-([packages](https://github.com/users/Elephant-on-github/packages/container/package/simple-ytdl-ui/settings)).
+`main`, for `linux/amd64` and `linux/arm64`.
+
+A container package is **private by default**, and only the owner of the account can
+change that — the workflow's token is not allowed to. Do it once, by hand:
+
+1. Open the [package settings](https://github.com/users/Elephant-on-github/packages/container/package/simple-ytdl-ui/settings).
+2. Set **Change visibility** to **Public** and save.
+
+After that anybody can pull the image without an account:
+
+```bash
+docker pull ghcr.io/elephant-on-github/simple-ytdl-ui:latest
+```
+
+If you would rather do it from the command line, give a personal access token the
+`write:packages` scope (`gh auth refresh -s write:packages`) and run:
+
+```bash
+gh api -X PATCH /user/packages/container/simple-ytdl-ui -f visibility=public
+```
 
 ---
 

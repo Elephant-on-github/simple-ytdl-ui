@@ -99,8 +99,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # A container package is private by default. The point of this workflow
-      # is that anybody can pull the image, so it is made public.
+      # A container package is private by default and only the owner of the
+      # account can change that — the workflow token is not allowed to. The
+      # step only warns, so the image is still published.
       - name: Make the package public
         continue-on-error: true
         env:
@@ -116,7 +117,6 @@ jobs:
             "https://api.github.com/users/${OWNER}/packages/container/${NAME}" \
             -d '{"visibility":"public"}')
           echo "visibility change: HTTP ${status}"
-          cat /tmp/visibility.json
           if [ "${status}" != "200" ]; then
-            echo "::warning::could not change the package visibility, set it by hand in the package settings"
+            echo "::warning::the package is still private — set its visibility to public in the package settings, see the README"
           fi
