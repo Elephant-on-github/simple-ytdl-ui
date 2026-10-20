@@ -163,6 +163,7 @@ Download, video mode:
 yt-dlp --no-playlist --newline --no-warnings \
   --progress-template "dl|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s" \
   -f "bv*+ba/b" --merge-output-format mp4 --write-thumbnail \
+  --ffmpeg-location <ffmpeg> \
   -o "<dir>/%(title).150s [%(id)s].%(ext)s" <url>
 ```
 
@@ -173,6 +174,7 @@ yt-dlp --no-playlist --newline --no-warnings \
   --progress-template "dl|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s" \
   -f "bestaudio/best" -x --audio-format mp3 --audio-quality 0 \
   --embed-thumbnail --embed-metadata --write-thumbnail \
+  --ffmpeg-location <ffmpeg> \
   -o "<dir>/%(artist,creator,channel,uploader)s - %(title).150s [%(id)s].%(ext)s" <url>
 ```
 
@@ -180,12 +182,17 @@ yt-dlp --no-playlist --newline --no-warnings \
 quality MP3" requirement. `--embed-thumbnail`/`--embed-metadata` require ffmpeg, which
 is in the image. `--write-thumbnail` keeps the cover image on disk next to the media
 file, so the library can show it (`--embed-thumbnail` alone deletes it again after
-embedding it into the audio).
+embedding it into the audio). `--ffmpeg-location` points yt-dlp at the ffmpeg binary
+the server was configured with, so the extraction does not depend on the PATH.
 
 The produced file is located after the process exits by globbing the output directory
 for `*[{videoID}].*` — deterministic because the output template always embeds the id.
 Only files that can hold media count; the cover art next to them shares the same base
 name and is never mistaken for the media file.
+
+**In music mode only `.mp3` counts as media.** If the extraction fails — ffmpeg
+missing, for instance — yt-dlp keeps the source audio and the job is reported as
+failed with the reason. A leftover `.m4a` is never handed over as a finished MP3.
 
 If yt-dlp exits non-zero *after* the media file was written — a thumbnail that cannot
 be embedded, for instance — the job is still reported as completed and the file is
@@ -197,11 +204,20 @@ added to the library. The file is never orphaned on disk.
   with `--flat-playlist`; every entry becomes its own job so each has its own progress,
   and a single failure does not kill the batch.
 * A playlist is a batch: `POST /api/downloads` with `playlist:true` returns one job per
-  entry, all sharing a `playlist` title.
+  entry, all sharing a `playlist` title. The request returns as soon as the entries
+  are known — a thousand track playlist must not hold the browser waiting.
 * "Sync" from the Google playlists view re-queues only the videos that are **not**
-  already in the library (dedupe key = video id + mode), so pressing sync twice is safe.
+  already in the library (dedupe key = video id + mode), so pressing sync twice is safe
+  and does not download anything twice.
 * Files of a playlist are stored in `DATA_DIR/music/<Playlist Title>/` (or
   `DATA_DIR/video/<Playlist Title>/`), sanitised for filesystem safety.
+
+### Durability
+
+* Every JSON document is written to a temp file, flushed and renamed into place.
+* A document that cannot be parsed is moved aside as `<name>.corrupt` before anything
+  is written to it — a broken file is never silently overwritten.
+* The job list is pruned to the last 200 jobs, so `jobs.json` does not grow forever.
 
 ### Google OAuth
 
@@ -220,8 +236,11 @@ Vue 3 + TS + Vite + Pinia + Vue Router. Three views:
 
 * **Download** (`/`) — URL field, the **Video / MP3** segmented toggle, a big
   "Download" button, and the live queue with progress bars, speed, ETA, and cancel.
+  The toggle starts in the mode the server announces (`DEFAULT_MODE`) until the user
+  picks one; the choice is remembered in the browser.
 * **Library** (`/library`) — grid of downloaded items with cover art, play button,
-  duration, and a docked player bar.
+  duration, and a docked player bar. Audio is played in the player bar; a video
+  download opens in a new tab, where the browser shows it with its own controls.
 * **Playlists** (`/playlists`) — Google sign-in card; when signed in, the user's
   playlists with item previews and a "Sync" button that respects the music toggle.
 

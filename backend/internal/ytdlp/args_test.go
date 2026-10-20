@@ -11,7 +11,7 @@ import (
 const wantProgressTemplate = "dl|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"
 
 func TestBuildDownloadArgsVideo(t *testing.T) {
-	got := BuildDownloadArgs(ModeVideo, filepath.Join("/data", "video", "singles"), "URL")
+	got := BuildDownloadArgs(ModeVideo, filepath.Join("/data", "video", "singles"), "URL", "")
 
 	want := []string{
 		"--no-playlist",
@@ -30,7 +30,7 @@ func TestBuildDownloadArgsVideo(t *testing.T) {
 }
 
 func TestBuildDownloadArgsMusic(t *testing.T) {
-	got := BuildDownloadArgs(ModeMusic, filepath.Join("/data", "music", "singles"), "URL")
+	got := BuildDownloadArgs(ModeMusic, filepath.Join("/data", "music", "singles"), "URL", "")
 
 	want := []string{
 		"--no-playlist",
@@ -53,7 +53,7 @@ func TestBuildDownloadArgsMusic(t *testing.T) {
 }
 
 func TestBuildDownloadArgsMusicExtractsMP3(t *testing.T) {
-	args := BuildDownloadArgs(ModeMusic, "/data/music", "URL")
+	args := BuildDownloadArgs(ModeMusic, "/data/music", "URL", "")
 
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "-x") {
@@ -77,7 +77,7 @@ func TestBuildDownloadArgsWritesThumbnailForCoverArt(t *testing.T) {
 	// The library grid shows the cover art next to every file, so the
 	// thumbnail has to stay on disk next to the media file.
 	for _, mode := range []Mode{ModeVideo, ModeMusic} {
-		args := BuildDownloadArgs(mode, "/data", "URL")
+		args := BuildDownloadArgs(mode, "/data", "URL", "")
 		joined := strings.Join(args, " ")
 		if !strings.Contains(joined, "--write-thumbnail") {
 			t.Errorf("%s args must contain --write-thumbnail", mode)
@@ -85,8 +85,45 @@ func TestBuildDownloadArgsWritesThumbnailForCoverArt(t *testing.T) {
 	}
 }
 
+func TestBuildDownloadArgsPassesTheFfmpegLocation(t *testing.T) {
+	// The music toggle needs ffmpeg to extract the MP3. The server must tell
+	// yt-dlp where ffmpeg is, otherwise the extraction silently fails.
+	args := BuildDownloadArgs(ModeMusic, "/data/music", "URL", "/usr/bin/ffmpeg")
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--ffmpeg-location /usr/bin/ffmpeg") {
+		t.Errorf("music args = %v, want the ffmpeg location", args)
+	}
+
+	video := BuildDownloadArgs(ModeVideo, "/data/video", "URL", "/usr/bin/ffmpeg")
+	if !strings.Contains(strings.Join(video, " "), "--ffmpeg-location /usr/bin/ffmpeg") {
+		t.Errorf("video args = %v, want the ffmpeg location", video)
+	}
+}
+
+func TestBuildDownloadArgsWithoutFfmpegLocation(t *testing.T) {
+	for _, mode := range []Mode{ModeVideo, ModeMusic} {
+		joined := strings.Join(BuildDownloadArgs(mode, "/data", "URL", ""), " ")
+		if strings.Contains(joined, "--ffmpeg-location") {
+			t.Errorf("%s args = %q, want no ffmpeg location", mode, joined)
+		}
+	}
+}
+
+func TestMusicModeOnlyAcceptsAnMp3(t *testing.T) {
+	// The promise of the music toggle is a real MP3. A leftover source file
+	// must never be reported as a finished download.
+	for _, ext := range []string{".m4a", ".webm", ".opus", ".ogg", ".wav", ".flac"} {
+		if mediaExtensions(ModeMusic)[ext] {
+			t.Errorf("music mode accepts %q, want only .mp3", ext)
+		}
+	}
+	if !mediaExtensions(ModeMusic)[".mp3"] {
+		t.Error("music mode must accept .mp3")
+	}
+}
+
 func TestBuildDownloadArgsVideoDoesNotExtractAudio(t *testing.T) {
-	args := BuildDownloadArgs(ModeVideo, "/data/video", "URL")
+	args := BuildDownloadArgs(ModeVideo, "/data/video", "URL", "")
 
 	for _, a := range args {
 		if a == "-x" {
@@ -104,7 +141,7 @@ func TestBuildDownloadArgsVideoDoesNotExtractAudio(t *testing.T) {
 
 func TestBuildDownloadArgsAlwaysSingleAndStreamed(t *testing.T) {
 	for _, mode := range []Mode{ModeVideo, ModeMusic} {
-		args := BuildDownloadArgs(mode, "/data", "URL")
+		args := BuildDownloadArgs(mode, "/data", "URL", "")
 		joined := strings.Join(args, " ")
 		if !strings.Contains(joined, "--no-playlist") {
 			t.Errorf("%s args must contain --no-playlist", mode)

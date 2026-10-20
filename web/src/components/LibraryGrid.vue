@@ -33,6 +33,19 @@ function askRemove(item: Item): void {
     confirming.value = null
   }, 3000)
 }
+
+/** A video download is watched, not played in the audio bar. */
+function isVideo(item: Item): boolean {
+  return (item.mime ?? '').startsWith('video/')
+}
+
+function open(item: Item): void {
+  if (isVideo(item)) {
+    window.open(api.streamUrl(item.id), '_blank', 'noopener')
+    return
+  }
+  emit('play', item)
+}
 </script>
 
 <template>
@@ -78,8 +91,8 @@ function askRemove(item: Item): void {
         <button
           type="button"
           class="cover-play"
-          :aria-label="`Play ${item.title}`"
-          @click="emit('play', item)"
+          :aria-label="`${isVideo(item) ? 'Watch' : 'Play'} ${item.title}`"
+          @click="open(item)"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M5 3.4 12.4 8 5 12.6V3.4Z" fill="currentColor" />

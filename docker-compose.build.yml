@@ -1,0 +1,23 @@
+# Builds the image from the sources in this repository instead of pulling the
+# published one. Use it when you changed something:
+#
+#   docker compose -f docker-compose.build.yml up -d --build
+services:
+  app:
+    build:
+      context: .
+    image: simple-ytdl-ui:local
+    container_name: simple-ytdl-ui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      PORT: "8080"
+      DATA_DIR: /data
+      YTDLP_BIN: /usr/local/bin/yt-dlp
+      FFMPEG_BIN: /usr/bin/ffmpeg
+      CONCURRENT_DOWNLOADS: "2"
+      DEFAULT_MODE: video
+      TZ: UTC

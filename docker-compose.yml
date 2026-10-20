@@ -1,7 +1,7 @@
 services:
   app:
-    build:
-      context: .
+    # Pulls the published image. Run `docker compose pull` first, or use
+    # `docker compose -f docker-compose.build.yml up -d` to build it locally.
     image: ghcr.io/elephant-on-github/simple-ytdl-ui:latest
     container_name: simple-ytdl-ui
     restart: unless-stopped

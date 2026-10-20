@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { api, type Mode } from '../lib/api'
+import { useModeStore } from './mode'
 
 export const useSessionStore = defineStore('session', () => {
   const googleEnabled = ref(false)
@@ -26,6 +27,9 @@ export const useSessionStore = defineStore('session', () => {
         googleEnabled.value = !!config.value.googleEnabled
         defaultMode.value = config.value.defaultMode === 'music' ? 'music' : 'video'
         concurrent.value = config.value.concurrent ?? 0
+        // The server decides which mode the toggle starts in, until the user
+        // picks one.
+        useModeStore().applyServerDefault(defaultMode.value)
       }
       if (health.status === 'fulfilled') version.value = health.value.version ?? ''
 

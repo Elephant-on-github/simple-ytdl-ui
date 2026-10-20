@@ -19,6 +19,8 @@ RUN bun run build
 FROM golang:1.23-alpine AS build
 WORKDIR /src
 
+ARG VERSION=dev
+
 RUN apk add --no-cache git ca-certificates
 
 COPY backend/go.mod backend/go.sum ./
@@ -27,7 +29,9 @@ RUN go mod download
 COPY backend/ ./
 COPY --from=web /src/web/dist ./internal/api/dist
 
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w -X github.com/Elephant-on-github/simple-ytdl-ui/backend/internal/api.Version=${VERSION}" \
+    -o /out/server ./cmd/server
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,39 @@ func fakeRunner(t *testing.T, mode string) *Runner {
 		t.Fatalf("write fake yt-dlp: %v", err)
 	}
 	return NewRunner(bin)
+}
+
+func TestResolveFfmpegTurnsANameIntoAPath(t *testing.T) {
+	// yt-dlp expects a path. A bare program name would be looked up relative
+	// to the working directory instead of the PATH.
+	dir := t.TempDir()
+	name := "ffmpeg"
+	if runtime.GOOS == "windows" {
+		name = "ffmpeg.exe"
+	}
+	binary := filepath.Join(dir, name)
+	if err := os.WriteFile(binary, []byte("not a real ffmpeg"), 0o755); err != nil {
+		t.Fatalf("write the fake ffmpeg: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	got := resolveFfmpeg("ffmpeg")
+	if got == "ffmpeg" {
+		t.Errorf("resolveFfmpeg(ffmpeg) = %q, want an absolute path", got)
+	}
+	if !filepath.IsAbs(got) {
+		t.Errorf("resolveFfmpeg(ffmpeg) = %q, want an absolute path", got)
+	}
+}
+
+func TestResolveFfmpegKeepsAPath(t *testing.T) {
+	got := resolveFfmpeg("/usr/bin/ffmpeg")
+	if got != "/usr/bin/ffmpeg" {
+		t.Errorf("resolveFfmpeg = %q, want the path unchanged", got)
+	}
+	if resolveFfmpeg("") != "" {
+		t.Error("resolveFfmpeg(\"\") must stay empty")
+	}
 }
 
 func TestProbeReturnsCannedInfo(t *testing.T) {

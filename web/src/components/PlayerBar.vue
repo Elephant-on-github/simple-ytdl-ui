@@ -5,9 +5,11 @@ import { usePlayerStore } from '../stores/player'
 import { formatDuration } from '../lib/format'
 
 const player = usePlayerStore()
-const audioEl = ref<HTMLAudioElement | null>(null)
+const mediaEl = ref<HTMLMediaElement | null>(null)
 
 const src = computed(() => (player.current ? api.streamUrl(player.current.id) : ''))
+/** A video download is not audio: it needs a <video> element to play. */
+const isVideo = computed(() => (player.current?.mime ?? '').startsWith('video/'))
 const coverSrc = computed(() =>
   player.current ? api.coverUrl(player.current.id) : '',
 )
@@ -17,7 +19,7 @@ const fill = computed(() => (player.duration ? (player.currentTime / player.dura
 const volumeFill = computed(() => (player.muted ? 0 : player.volume) * 100)
 
 /** `play()` returns a promise in modern browsers — but not everywhere. */
-function safePlay(el: HTMLAudioElement): void {
+function safePlay(el: HTMLMediaElement): void {
   try {
     const result = el.play() as Promise<void> | undefined
     if (result && typeof result.catch === 'function') result.catch(() => undefined)
@@ -29,7 +31,7 @@ function safePlay(el: HTMLAudioElement): void {
 watch(
   src,
   (value) => {
-    const el = audioEl.value
+    const el = mediaEl.value
     if (!el || !value) return
     el.load()
     if (player.playing) safePlay(el)
@@ -40,7 +42,7 @@ watch(
 watch(
   () => player.playing,
   (value) => {
-    const el = audioEl.value
+    const el = mediaEl.value
     if (!el) return
     if (value) safePlay(el)
     else el.pause()
@@ -50,19 +52,19 @@ watch(
 watch(
   [() => player.volume, () => player.muted],
   () => {
-    const el = audioEl.value
+    const el = mediaEl.value
     if (!el) return
     el.volume = player.muted ? 0 : player.volume
   },
 )
 
 function onTimeUpdate(): void {
-  const el = audioEl.value
+  const el = mediaEl.value
   if (el) player.currentTime = el.currentTime
 }
 
 function onDurationChange(): void {
-  const el = audioEl.value
+  const el = mediaEl.value
   if (el && Number.isFinite(el.duration)) player.duration = el.duration
 }
 
@@ -74,7 +76,7 @@ function onEnded(): void {
 function onSeek(event: Event): void {
   const value = Number((event.target as HTMLInputElement).value)
   player.seek(value)
-  if (audioEl.value) audioEl.value.currentTime = value
+  if (mediaEl.value) mediaEl.value.currentTime = value
 }
 
 function onVolume(event: Event): void {
@@ -85,8 +87,10 @@ function onVolume(event: Event): void {
 <template>
   <Transition name="player">
     <div v-if="player.isOpen" class="player" role="region" aria-label="Player">
-      <audio
-        ref="audioEl"
+      <component
+        :is="isVideo ? 'video' : 'audio'"
+        ref="mediaEl"
+        class="pb-media"
         :src="src"
         preload="metadata"
         @timeupdate="onTimeUpdate"
@@ -217,6 +221,11 @@ function onVolume(event: Event): void {
   height: var(--player-h);
   background: var(--panel);
   border-top: 1px solid var(--hairline);
+}
+
+/* The media element is driven by the bar; it is never shown itself. */
+.pb-media {
+  display: none;
 }
 
 /* The bar spans the window; its content lines up with the main column. */

@@ -39,4 +39,33 @@ describe('mode store', () => {
     store.toggle()
     expect(document.documentElement.dataset.mode).toBe('music')
   })
+
+  it('takes the default the server announces while the user has no preference', () => {
+    const store = useModeStore()
+
+    store.applyServerDefault('music')
+
+    expect(store.mode).toBe('music')
+    // The server default is not a choice of the user, so it is not stored.
+    expect(localStorage.getItem('simple-ytdl-ui:mode')).toBeNull()
+  })
+
+  it('keeps the choice of the user over the server default', () => {
+    localStorage.setItem('simple-ytdl-ui:mode', 'video')
+    const store = useModeStore()
+
+    store.applyServerDefault('music')
+
+    expect(store.mode).toBe('video')
+  })
+
+  it('lets the user overrule the server default', () => {
+    const store = useModeStore()
+    store.applyServerDefault('music')
+
+    store.toggle()
+
+    expect(store.mode).toBe('video')
+    expect(localStorage.getItem('simple-ytdl-ui:mode')).toBe('video')
+  })
 })

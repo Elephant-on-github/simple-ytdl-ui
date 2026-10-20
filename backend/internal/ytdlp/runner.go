@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,6 +18,9 @@ import (
 // Runner executes the yt-dlp binary.
 type Runner struct {
 	Bin string
+	// FfmpegBin is the path to the ffmpeg binary. When it is set it is handed
+	// to yt-dlp, so the server does not depend on ffmpeg being on the PATH.
+	FfmpegBin string
 }
 
 // NewRunner returns a runner that uses the given yt-dlp binary.
@@ -25,6 +29,32 @@ func NewRunner(bin string) *Runner {
 		bin = "yt-dlp"
 	}
 	return &Runner{Bin: bin}
+}
+
+// WithFfmpeg points the runner at an ffmpeg binary and returns it.
+func (r *Runner) WithFfmpeg(path string) *Runner {
+	r.FfmpegBin = resolveFfmpeg(path)
+	return r
+}
+
+// resolveFfmpeg turns the configured ffmpeg into something yt-dlp can use.
+// yt-dlp expects a path, not a program name: a bare "ffmpeg" would be looked
+// up relative to the working directory. A name is therefore resolved against
+// the PATH, and a directory is passed through as it is.
+func resolveFfmpeg(path string) string {
+	if path == "" {
+		return ""
+	}
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return path
+	}
+	if strings.ContainsRune(path, os.PathSeparator) || strings.ContainsRune(path, '/') {
+		return path
+	}
+	if abs, err := exec.LookPath(path); err == nil {
+		return abs
+	}
+	return path
 }
 
 // Info is the subset of yt-dlp's JSON output the server cares about.
@@ -82,7 +112,7 @@ func (r *Runner) Download(ctx context.Context, mode Mode, outDir, rawURL string,
 		return "", fmt.Errorf("cannot create output directory %q: %w", absDir, err)
 	}
 
-	args := BuildDownloadArgs(mode, absDir, rawURL)
+	args := BuildDownloadArgs(mode, absDir, rawURL, r.FfmpegBin)
 	cmd := prepareCmdPlatform(ctx, r.Bin, args...)
 	cmd.WaitDelay = 2 * time.Second
 
@@ -165,6 +195,9 @@ func FindOutputFile(outDir, videoID string, mode Mode) (string, error) {
 		candidates = append(candidates, m)
 	}
 	if len(candidates) == 0 {
+		if mode == ModeMusic {
+			return "", fmt.Errorf("yt-dlp produced no MP3 for %s in %s (the extraction needs ffmpeg)", videoID, outDir)
+		}
 		return "", fmt.Errorf("yt-dlp produced no file for %s in %s", videoID, outDir)
 	}
 
@@ -214,12 +247,13 @@ func isIntermediate(name string) bool {
 
 // mediaExtensions are the extensions that can hold the downloaded media.
 // The cover art written next to the media is deliberately not in this list.
+//
+// In music mode only the MP3 counts: the promise of the music toggle is a real
+// MP3, so a leftover source file (an .m4a that yt-dlp keeps when the
+// extraction fails) must never be reported as a finished download.
 func mediaExtensions(mode Mode) map[string]bool {
 	if mode == ModeMusic {
-		return map[string]bool{
-			".mp3": true, ".m4a": true, ".opus": true,
-			".ogg": true, ".wav": true, ".flac": true, ".aac": true,
-		}
+		return map[string]bool{".mp3": true}
 	}
 	return map[string]bool{
 		".mp4": true, ".mkv": true, ".webm": true,

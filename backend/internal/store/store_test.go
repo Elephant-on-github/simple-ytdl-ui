@@ -9,6 +9,47 @@ import (
 	"time"
 )
 
+func TestACorruptLibraryFileIsKeptInsteadOfOverwritten(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, libraryFile)
+	broken := []byte(`{"items": [{"id": "yt_abc_video", "title": "Trunc`)
+	if err := os.WriteFile(path, broken, 0o644); err != nil {
+		t.Fatalf("write the broken file: %v", err)
+	}
+
+	st := New(dir)
+	if len(st.Items()) != 0 {
+		t.Errorf("items = %d, want 0", len(st.Items()))
+	}
+
+	// The unreadable data must not be destroyed by the next write.
+	if err := st.AddItem(Item{ID: "yt_new_video", VideoID: "new"}); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	kept, err := os.ReadFile(path + ".corrupt")
+	if err != nil {
+		t.Fatalf("the broken file was not kept: %v", err)
+	}
+	if string(kept) != string(broken) {
+		t.Errorf("the kept file = %q, want the original bytes", string(kept))
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the library: %v", err)
+	}
+	var doc struct {
+		Items []Item `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("the new library file is not valid JSON: %v", err)
+	}
+	if len(doc.Items) != 1 || doc.Items[0].ID != "yt_new_video" {
+		t.Errorf("items = %+v, want only the new item", doc.Items)
+	}
+}
+
 func TestItemJSONFieldNames(t *testing.T) {
 	it := Item{
 		ID:        "yt_abc_video",

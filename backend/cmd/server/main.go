@@ -62,7 +62,7 @@ func newServer(cfg config.Config) (http.Handler, error) {
 	}
 
 	st := store.New(cfg.DataDir)
-	runner := ytdlp.NewRunner(cfg.YtDlpBin)
+	runner := ytdlp.NewRunner(cfg.YtDlpBin).WithFfmpeg(cfg.FfmpegBin)
 	mgr := download.NewManager(runner, st, cfg.DataDir, cfg.ConcurrentDownloads)
 
 	return api.New(cfg, st, mgr, nil).Handler(), nil

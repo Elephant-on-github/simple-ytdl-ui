@@ -37,8 +37,24 @@ Open <http://localhost:8080>.
 Or with compose:
 
 ```bash
+docker compose pull
 docker compose up -d
 ```
+
+To build the image from the sources instead of pulling it:
+
+```bash
+docker compose -f docker-compose.build.yml up -d --build
+```
+
+### Image tags
+
+| Tag | What it is |
+|---|---|
+| `latest` | the newest build of `main` (and the newest release) |
+| `main` | the newest build of `main` |
+| `1.0.0`, `1.0` | a release, cut by tagging the repository `v1.0.0` |
+| `sha-abc1234` | the build of a single commit |
 
 ---
 
@@ -94,8 +110,13 @@ your account.
 | Video | `bv*+ba/b`, merged to MP4 | best video + best audio, muxed into an `.mp4` |
 | MP3 | `bestaudio/best`, `-x --audio-format mp3 --audio-quality 0` | highest-bitrate audio as MP3, with embedded cover art and metadata |
 
+The MP3 is extracted with ffmpeg, so the server needs ffmpeg — it is in the image and
+`FFMPEG_BIN` points at it. If the extraction fails, the download is reported as failed
+with the reason instead of handing you a file that is not an MP3.
+
 Files are named `Artist - Title [videoId].mp3` (or `Title [videoId].mp4`) so nothing
 overwrites anything else. Playlist downloads are grouped into a folder per playlist.
+The cover art is written next to the media file and shown in the library.
 
 ---
 
@@ -159,6 +180,10 @@ Dockerfile   three stages: bun build -> go build -> debian runtime
 
 * `yt-dlp` is pinned to the latest release at image build time. If YouTube changes
   something and downloads start failing, pull a newer image.
+* The job list is kept in memory and mirrored to `DATA_DIR/jobs.json`; the oldest
+  finished jobs are dropped, so the file does not grow forever.
+* A `library.json` that cannot be parsed is never overwritten — it is moved to
+  `library.json.corrupt` first, so nothing is lost silently.
 * This tool downloads material that YouTube's terms of service restrict you from
   downloading. Use it for content you have the right to keep. You are responsible for
   what you download.

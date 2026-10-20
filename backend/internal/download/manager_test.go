@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -400,6 +401,82 @@ func TestFinishedFileSurvivesAPostProcessingFailure(t *testing.T) {
 	}
 	if _, err := os.Stat(items[0].File); err != nil {
 		t.Errorf("item file %q missing: %v", items[0].File, err)
+	}
+}
+
+func TestMusicModeWithoutAnMp3IsNotReportedAsFinished(t *testing.T) {
+	// Without ffmpeg yt-dlp keeps the source audio. The music toggle promises
+	// an MP3, so the job must fail instead of handing over a file that is not
+	// an MP3.
+	f := newFixture(t, fakeytdlp.ModeNoMusic)
+
+	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeMusic, false)
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	f.manager.WaitIdle()
+
+	final, ok := jobByID(f.manager.Jobs(), jobs[0].ID)
+	if !ok {
+		t.Fatal("job disappeared")
+	}
+	if final.Status != store.StatusFailed {
+		t.Fatalf("status = %q, want failed", final.Status)
+	}
+	if len(f.store.Items()) != 0 {
+		t.Errorf("library has %d items, want 0", len(f.store.Items()))
+	}
+}
+
+func TestEnqueueingManyEntriesDoesNotBlock(t *testing.T) {
+	// A big playlist must return at once: the browser waits for this request
+	// and would otherwise show "Starting…" for the length of the whole batch.
+	f := newFixture(t, fakeytdlp.ModeSleep)
+
+	entries := make([]ytdlp.Info, 0, 1500)
+	for i := 0; i < 1500; i++ {
+		entries = append(entries, ytdlp.Info{
+			ID:    fmt.Sprintf("vid%04d", i),
+			Title: fmt.Sprintf("Video %04d", i),
+		})
+	}
+
+	done := make(chan []store.Job, 1)
+	go func() {
+		jobs, err := f.manager.enqueueEntries(ytdlp.ModeVideo, entries, "Big Playlist")
+		if err != nil {
+			t.Errorf("enqueueEntries: %v", err)
+		}
+		done <- jobs
+	}()
+
+	select {
+	case jobs := <-done:
+		if len(jobs) != len(entries) {
+			t.Errorf("len(jobs) = %d, want %d", len(jobs), len(entries))
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("enqueueEntries blocked while the workers were busy")
+	}
+}
+
+func TestSyncingTheSamePlaylistTwiceDoesNotDownloadTwice(t *testing.T) {
+	f := newFixture(t, fakeytdlp.ModeOK)
+	url := "https://www.youtube.com/playlist?list=PLfake"
+
+	for i := 0; i < 2; i++ {
+		if _, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeMusic, true); err != nil {
+			t.Fatalf("Enqueue (round %d): %v", i, err)
+		}
+		f.manager.WaitIdle()
+	}
+
+	if got := f.downloads(t); got != 3 {
+		t.Errorf("downloads = %d, want 3 (one per track, not two)", got)
+	}
+	if len(f.store.Items()) != 3 {
+		t.Errorf("library has %d items, want 3", len(f.store.Items()))
 	}
 }
 

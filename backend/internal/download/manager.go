@@ -34,8 +34,14 @@ type Manager struct {
 	active  int
 	persist map[string]time.Time
 
-	queue chan *task
+	queue   []*task // pending work, oldest first
+	closed  bool
+	workers sync.WaitGroup
 }
+
+// maxKeptJobs is the number of finished jobs that are kept in the job list.
+// The list is persisted, so it must not grow without a bound.
+const maxKeptJobs = 200
 
 // task is the unit of work handed to the workers.
 type task struct {
@@ -63,7 +69,6 @@ func NewManager(runner *ytdlp.Runner, st *store.Store, workDir string, concurren
 		concurrent: concurrent,
 		cancels:    map[string]context.CancelFunc{},
 		persist:    map[string]time.Time{},
-		queue:      make(chan *task, 1024),
 	}
 	m.cond = sync.NewCond(&m.mu)
 
@@ -78,33 +83,87 @@ func NewManager(runner *ytdlp.Runner, st *store.Store, workDir string, concurren
 		}
 		m.jobs = append(m.jobs, j)
 	}
+	m.pruneJobsLocked()
 
 	for i := 0; i < concurrent; i++ {
+		m.workers.Add(1)
 		go m.worker()
 	}
 	return m
 }
 
+// pruneJobsLocked drops the oldest finished jobs so the persisted list stays
+// bounded. The lock must be held.
+func (m *Manager) pruneJobsLocked() {
+	if len(m.jobs) <= maxKeptJobs {
+		return
+	}
+	drop := len(m.jobs) - maxKeptJobs
+	kept := make([]store.Job, 0, maxKeptJobs)
+	for _, j := range m.jobs[drop:] {
+		kept = append(kept, j)
+	}
+	m.jobs = kept
+}
+
 // Enqueue turns a URL into one or more jobs. A playlist URL is expanded into
 // one job per entry so every entry gets its own progress and a single failure
 // does not kill the batch.
+//
+// It never blocks: the jobs are queued and the workers pick them up. A
+// thousand track playlist returns as soon as the entries are known.
 func (m *Manager) Enqueue(ctx context.Context, rawURL string, mode ytdlp.Mode, playlist bool) ([]store.Job, error) {
 	kind, videoID, _, err := ytdlp.ClassifyURL(rawURL)
 	if err != nil {
 		return nil, err
 	}
 
-	tasks, err := m.plan(ctx, rawURL, mode, kind, videoID, playlist)
+	entries, playlistTitle, err := m.plan(ctx, rawURL, mode, kind, videoID, playlist)
 	if err != nil {
 		return nil, err
 	}
+	return m.enqueueEntries(mode, entries, playlistTitle)
+}
 
+// enqueueEntries turns the entries of a playlist (or a single video) into jobs
+// and puts them on the queue.
+func (m *Manager) enqueueEntries(mode ytdlp.Mode, entries []ytdlp.Info, playlistTitle string) ([]store.Job, error) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.closed {
+		return nil, errors.New("the server is shutting down")
+	}
+
 	var (
 		out     []store.Job
 		toQueue []*task
 	)
-	for _, t := range tasks {
+	for _, e := range entries {
+		if e.ID == "" {
+			continue
+		}
+		url := e.WebpageURL
+		if url == "" {
+			url = e.URL
+		}
+		if url == "" {
+			url = "https://www.youtube.com/watch?v=" + e.ID
+		}
+		t := &task{
+			url:      url,
+			videoID:  e.ID,
+			title:    e.Title,
+			artist:   e.Uploader,
+			duration: int(e.Duration),
+			playlist: playlistTitle,
+			mode:     mode,
+			fromList: playlistTitle != "",
+		}
+		if t.title == "" {
+			t.title = t.videoID
+		}
+
 		if m.store.HasVideo(t.videoID, string(mode)) {
 			// Already in the library: never download the same video and mode
 			// twice.
@@ -137,21 +196,19 @@ func (m *Manager) Enqueue(ctx context.Context, rawURL string, mode ytdlp.Mode, p
 		out = append(out, job)
 		toQueue = append(toQueue, t)
 	}
+	m.pruneJobsLocked()
 	m.persistLocked()
-	m.mu.Unlock()
-
-	for _, t := range toQueue {
-		m.queue <- t
-	}
+	m.queue = append(m.queue, toQueue...)
+	m.cond.Broadcast()
 	return out, nil
 }
 
-// plan resolves the URL into the tasks that have to be run.
-func (m *Manager) plan(ctx context.Context, rawURL string, mode ytdlp.Mode, kind ytdlp.Kind, videoID string, playlist bool) ([]*task, error) {
+// plan resolves the URL into the entries that have to be downloaded.
+func (m *Manager) plan(ctx context.Context, rawURL string, mode ytdlp.Mode, kind ytdlp.Kind, videoID string, playlist bool) ([]ytdlp.Info, string, error) {
 	if playlist || kind == ytdlp.KindPlaylist {
 		info, err := m.runner.Probe(ctx, rawURL, true)
 		if err != nil {
-			return nil, fmt.Errorf("cannot read playlist: %w", err)
+			return nil, "", fmt.Errorf("cannot read playlist: %w", err)
 		}
 		title := info.PlaylistTitle
 		if title == "" {
@@ -160,54 +217,52 @@ func (m *Manager) plan(ctx context.Context, rawURL string, mode ytdlp.Mode, kind
 		if title == "" {
 			title = "Playlist"
 		}
-		tasks := make([]*task, 0, len(info.Entries))
+		entries := make([]ytdlp.Info, 0, len(info.Entries))
 		for _, e := range info.Entries {
 			if e.ID == "" {
 				continue
 			}
-			url := e.WebpageURL
-			if url == "" {
-				// A flat playlist listing carries the link in "url".
-				url = e.URL
-			}
-			if url == "" {
-				url = "https://www.youtube.com/watch?v=" + e.ID
-			}
-			tasks = append(tasks, &task{
-				url:      url,
-				videoID:  e.ID,
-				title:    e.Title,
-				artist:   e.Uploader,
-				duration: int(e.Duration),
-				playlist: title,
-				mode:     mode,
-				fromList: true,
-			})
+			entries = append(entries, e)
 		}
-		if len(tasks) == 0 {
-			return nil, errors.New("the playlist is empty")
+		if len(entries) == 0 {
+			return nil, "", errors.New("the playlist is empty")
 		}
-		return tasks, nil
+		return entries, title, nil
 	}
 
-	t := &task{url: rawURL, videoID: videoID, mode: mode}
-	if info, err := m.runner.Probe(ctx, rawURL, false); err == nil {
-		t.title = info.Title
-		t.artist = info.Uploader
-		t.duration = int(info.Duration)
-		if info.ID != "" {
-			t.videoID = info.ID
+	info := ytdlp.Info{ID: videoID, WebpageURL: rawURL}
+	if probed, err := m.runner.Probe(ctx, rawURL, false); err == nil {
+		info.Title = probed.Title
+		info.Uploader = probed.Uploader
+		info.Duration = probed.Duration
+		if probed.ID != "" {
+			info.ID = probed.ID
 		}
 	}
-	if t.title == "" {
-		t.title = t.videoID
+	if info.Title == "" {
+		info.Title = info.ID
 	}
-	return []*task{t}, nil
+	return []ytdlp.Info{info}, "", nil
 }
 
 // worker pulls tasks off the queue until the manager is closed.
 func (m *Manager) worker() {
-	for t := range m.queue {
+	defer m.workers.Done()
+
+	for {
+		m.mu.Lock()
+		for len(m.queue) == 0 && !m.closed {
+			m.cond.Wait()
+		}
+		if m.closed {
+			// The manager is shutting down: leave the rest of the queue.
+			m.mu.Unlock()
+			return
+		}
+		t := m.queue[0]
+		m.queue = m.queue[1:]
+		m.mu.Unlock()
+
 		m.run(t)
 	}
 }
@@ -418,9 +473,32 @@ func (m *Manager) WaitIdle() {
 	}
 }
 
-// Close stops the worker pool.
+// Close stops the worker pool and cancels the downloads that are still
+// running.
 func (m *Manager) Close() {
-	close(m.queue)
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return
+	}
+	m.closed = true
+	for _, cancel := range m.cancels {
+		cancel()
+	}
+	m.cond.Broadcast()
+	m.mu.Unlock()
+
+	// The workers stop on their own; the wait is bounded so a stuck download
+	// cannot hold the shutdown hostage.
+	done := make(chan struct{})
+	go func() {
+		m.workers.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+	}
 }
 
 func (m *Manager) indexOf(id string) int {

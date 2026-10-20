@@ -40,9 +40,15 @@ func ParseMode(s string) (Mode, error) {
 
 // BuildDownloadArgs returns the frozen yt-dlp argument list for the given
 // mode. The lists are copied verbatim from the design spec.
-func BuildDownloadArgs(mode Mode, outDir string, url string) []string {
+//
+// ffmpegLocation is the path to the ffmpeg binary (or its directory). When it
+// is empty yt-dlp looks for ffmpeg on its own, which is what happens when the
+// server runs outside the container.
+func BuildDownloadArgs(mode Mode, outDir string, url string, ffmpegLocation string) []string {
+	var args []string
+
 	if mode == ModeMusic {
-		return []string{
+		args = []string{
 			"--no-playlist",
 			"--newline",
 			"--no-warnings",
@@ -55,18 +61,22 @@ func BuildDownloadArgs(mode Mode, outDir string, url string) []string {
 			"--embed-metadata",
 			"--write-thumbnail",
 			"-o", filepath.Join(outDir, "%(artist,creator,channel,uploader)s - %(title).150s [%(id)s].%(ext)s"),
-			url,
+		}
+	} else {
+		args = []string{
+			"--no-playlist",
+			"--newline",
+			"--no-warnings",
+			"--progress-template", progressTemplate,
+			"-f", "bv*+ba/b",
+			"--merge-output-format", "mp4",
+			"--write-thumbnail",
+			"-o", filepath.Join(outDir, "%(title).150s [%(id)s].%(ext)s"),
 		}
 	}
-	return []string{
-		"--no-playlist",
-		"--newline",
-		"--no-warnings",
-		"--progress-template", progressTemplate,
-		"-f", "bv*+ba/b",
-		"--merge-output-format", "mp4",
-		"--write-thumbnail",
-		"-o", filepath.Join(outDir, "%(title).150s [%(id)s].%(ext)s"),
-		url,
+
+	if ffmpegLocation != "" {
+		args = append(args, "--ffmpeg-location", ffmpegLocation)
 	}
+	return append(args, url)
 }

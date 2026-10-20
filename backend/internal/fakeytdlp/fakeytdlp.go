@@ -31,6 +31,9 @@ const (
 	// ModeFailAfterWrite produces the media file and then exits 1, the way
 	// yt-dlp does when a post processor (thumbnail embedding) fails.
 	ModeFailAfterWrite = "failafterwrite"
+	// ModeNoMusic keeps the source audio instead of extracting an MP3, the
+	// way yt-dlp does when ffmpeg is missing.
+	ModeNoMusic = "nomusic"
 )
 
 // Write creates a fake yt-dlp binary inside dir and returns its path.
@@ -121,7 +124,11 @@ fi
 dir=$(dirname "$out")
 mkdir -p "$dir"
 if [ "$music" = "1" ]; then
-  printf 'fake mp3' > "$dir/Fake Artist - Fake Video [$id].mp3"
+  if [ "$mode" = "nomusic" ]; then
+    printf 'fake m4a' > "$dir/Fake Artist - Fake Video [$id].m4a"
+  else
+    printf 'fake mp3' > "$dir/Fake Artist - Fake Video [$id].mp3"
+  fi
 else
   printf 'fake mp4' > "$dir/Fake Video [$id].mp4"
 fi
@@ -182,6 +189,10 @@ if "%ISMUSIC%"=="1" goto writemp3
 echo fake mp4>"%DIR%Fake Video [%ID%].mp4"
 goto done
 :writemp3
+if not "%MODE%"=="nomusic" goto writemp3file
+echo fake m4a>"%DIR%Fake Artist - Fake Video [%ID%].m4a"
+goto done
+:writemp3file
 echo fake mp3>"%DIR%Fake Artist - Fake Video [%ID%].mp3"
 :done
 if not "%MODE%"=="failafterwrite" exit /b 0

@@ -5,6 +5,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -41,43 +42,75 @@ func New(dir string) *Store {
 }
 
 func (s *Store) load() {
-	if raw, err := os.ReadFile(filepath.Join(s.dir, libraryFile)); err == nil {
-		var doc struct {
-			Items []Item `json:"items"`
-		}
-		if json.Unmarshal(raw, &doc) == nil {
-			s.items = doc.Items
-		}
+	var library struct {
+		Items []Item `json:"items"`
 	}
-	if raw, err := os.ReadFile(filepath.Join(s.dir, jobsFile)); err == nil {
-		var doc struct {
-			Jobs []Job `json:"jobs"`
-		}
-		if json.Unmarshal(raw, &doc) == nil {
-			s.jobs = doc.Jobs
-		}
+	if s.loadJSON(libraryFile, &library) {
+		s.items = library.Items
 	}
-	if raw, err := os.ReadFile(filepath.Join(s.dir, googleFile)); err == nil {
-		var doc struct {
-			RefreshToken string `json:"refreshToken"`
-			Email        string `json:"email"`
-		}
-		if json.Unmarshal(raw, &doc) == nil {
-			s.googleRefreshToken = doc.RefreshToken
-			s.googleEmail = doc.Email
-		}
+
+	var jobs struct {
+		Jobs []Job `json:"jobs"`
+	}
+	if s.loadJSON(jobsFile, &jobs) {
+		s.jobs = jobs.Jobs
+	}
+
+	var google struct {
+		RefreshToken string `json:"refreshToken"`
+		Email        string `json:"email"`
+	}
+	if s.loadJSON(googleFile, &google) {
+		s.googleRefreshToken = google.RefreshToken
+		s.googleEmail = google.Email
 	}
 }
 
+// loadJSON reads a JSON document into out. A file that cannot be parsed is
+// moved aside as <name>.corrupt: the next write must never destroy data that
+// could not be read. It reports whether the document was read.
+func (s *Store) loadJSON(name string, out any) bool {
+	path := filepath.Join(s.dir, name)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		log.Printf("the %s file could not be parsed (%v); it was kept as %s.corrupt", name, err, name)
+		if err := os.Rename(path, path+".corrupt"); err != nil {
+			log.Printf("could not move the broken %s file aside: %v", name, err)
+		}
+		return false
+	}
+	return true
+}
+
 // writeAtomic writes v as JSON to <name> inside the store directory by way of
-// a temp file that is renamed into place.
+// a temp file that is flushed and renamed into place.
 func (s *Store) writeAtomic(name string, v any, perm os.FileMode) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
 	tmp := filepath.Join(s.dir, name+".tmp")
-	if err := os.WriteFile(tmp, data, perm); err != nil {
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	// Flush before the rename: a power cut must not leave a half written file
+	// behind under the real name.
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	if err := os.Rename(tmp, filepath.Join(s.dir, name)); err != nil {
