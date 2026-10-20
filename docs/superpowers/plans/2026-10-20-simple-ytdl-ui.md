@@ -1,5 +1,9 @@
 # simple-ytdl-ui Implementation Plan
 
+> **Note:** this plan is the original argument. It was executed, then a review of the
+> whole branch changed a few decisions — the spec and the ledger
+> (`.superpowers/sdd/2026-10-20-simple-ytdl-ui.md/progress.md`) carry the final truth.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship a single-container web app that downloads YouTube videos/playlists as video or best-quality MP3, with optional Google sign-in for playlist sync, a modern Vue UI, and a GHCR-published Docker image.
