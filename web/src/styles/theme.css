@@ -1,0 +1,87 @@
+/* ---------------------------------------------------------------------------
+   simple-ytdl-ui — design tokens
+   One source of truth for surface, ink, accent, type, space and motion.
+   The accent swaps with the download mode (data-mode on <html>); components
+   never hard-code a colour.
+   --------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+
+  /* surfaces — layered, never pure white on pure black */
+  --canvas: #0a0a0b;
+  --rail: #0c0c0e;
+  --panel: #131316;
+  --panel-raised: #17171b;
+  --panel-sunken: #0e0e11;
+
+  /* hairlines */
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-strong: rgba(255, 255, 255, 0.16);
+
+  /* ink */
+  --text: #f5f5f6;
+  --text-dim: #b6b6be;
+  --muted: #8b8b94;
+  --faint: #5f5f69;
+
+  /* accent — video (cool blue) is the default identity */
+  --accent: #5b8def;
+  --accent-ink: #07080b;
+  --accent-soft: rgba(91, 141, 239, 0.13);
+  --accent-line: rgba(91, 141, 239, 0.4);
+  --accent-wash: rgba(91, 141, 239, 0.22);
+
+  /* status */
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+  --danger-line: rgba(248, 113, 113, 0.34);
+
+  /* type */
+  --font: 'Inter var', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-15: 15px;
+  --fs-20: 20px;
+  --fs-34: 34px;
+
+  /* space */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+  --sp-9: 56px;
+
+  /* radii */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+  --r-full: 999px;
+
+  /* motion */
+  --dur-fast: 150ms;
+  --dur: 200ms;
+  --dur-slow: 250ms;
+  --ease: cubic-bezier(0.16, 0.84, 0.44, 1);
+
+  /* layout */
+  --rail-w: 236px;
+  --player-h: 76px;
+  --content-max: 1120px;
+}
+
+/* music identity — warm amber */
+[data-mode='music'] {
+  --accent: #f5a524;
+  --accent-soft: rgba(245, 165, 36, 0.12);
+  --accent-line: rgba(245, 165, 36, 0.42);
+  --accent-wash: rgba(245, 165, 36, 0.22);
+}
