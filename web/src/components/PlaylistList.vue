@@ -9,6 +9,7 @@ const emit = defineEmits<{ (e: 'sync', playlist: Playlist): void }>()
 
 const openId = ref<string | null>(null)
 const previews = ref<Record<string, PlaylistItem[]>>({})
+const nextTokens = ref<Record<string, string>>({})
 const loadingId = ref<string | null>(null)
 const brokenThumbs = ref<Set<string>>(new Set())
 
@@ -19,12 +20,22 @@ async function toggle(playlist: Playlist): Promise<void> {
   }
   openId.value = playlist.id
   if (previews.value[playlist.id]) return
-  loadingId.value = playlist.id
+  await loadPage(playlist.id, '')
+}
+
+// loadPage fetches one page of playlist items. The YouTube API returns 50
+// items per page, so a long playlist needs more than one request.
+async function loadPage(playlistId: string, pageToken: string): Promise<void> {
+  loadingId.value = playlistId
   try {
-    const payload = await api.playlistItems(playlist.id)
-    previews.value = { ...previews.value, [playlist.id]: payload.items ?? [] }
+    const payload = await api.playlistItems(playlistId, pageToken || undefined)
+    const known = previews.value[playlistId] ?? []
+    const seen = new Set(known.map((entry) => entry.id))
+    const fresh = (payload.items ?? []).filter((entry) => !seen.has(entry.id))
+    previews.value = { ...previews.value, [playlistId]: [...known, ...fresh] }
+    nextTokens.value = { ...nextTokens.value, [playlistId]: payload.nextPageToken ?? '' }
   } catch {
-    previews.value = { ...previews.value, [playlist.id]: [] }
+    previews.value = { ...previews.value, [playlistId]: previews.value[playlistId] ?? [] }
   } finally {
     loadingId.value = null
   }
@@ -113,6 +124,15 @@ function markBroken(id: string): void {
               <span class="pl-item-time tnum">{{ formatDuration(entry.duration) }}</span>
             </li>
           </ul>
+          <button
+            v-if="nextTokens[playlist.id]"
+            type="button"
+            class="btn btn--ghost pl-more"
+            :disabled="loadingId === playlist.id"
+            @click="loadPage(playlist.id, nextTokens[playlist.id])"
+          >
+            {{ loadingId === playlist.id ? 'Loading…' : 'Show more' }}
+          </button>
         </div>
       </Transition>
     </li>
@@ -252,6 +272,12 @@ function markBroken(id: string): void {
 .pl-item-time {
   text-align: right;
   color: var(--muted);
+}
+
+.pl-more {
+  height: 30px;
+  margin-top: var(--sp-3);
+  font-size: var(--fs-12);
 }
 
 .expand-enter-active,

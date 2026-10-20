@@ -88,7 +88,7 @@ The Go binary serves the API under `/api/*` and the embedded SPA for everything 
 
 ```go
 type Item struct {
-    ID          string    `json:"id"`          // "yt_<videoID>" or "pl_<videoID>_<mode>"
+    ID          string    `json:"id"`          // "yt_<videoID>_<mode>" or "pl_<videoID>_<mode>"
     VideoID     string    `json:"videoId"`
     Title       string    `json:"title"`
     Artist      string    `json:"artist"`
@@ -103,6 +103,9 @@ type Item struct {
     AddedAt     time.Time `json:"addedAt"`
 }
 ```
+
+The id carries the mode because the same video can be in the library twice — once as
+MP3, once as a video — and the two must not collide.
 
 `jobs.json` → `{"jobs":[Job]}` where
 
@@ -140,7 +143,7 @@ All responses are JSON except media endpoints (which stream bytes).
 | GET | `/api/auth/session` | `{"signedIn":bool,"email":"…"}` |
 | POST | `/api/auth/logout` | `{"ok":true}` — deletes the stored token |
 | GET | `/api/playlists` | `{"items":[{"id","title","itemCount","thumb"}]}`; 401 if not signed in |
-| GET | `/api/playlists/{id}/items` | `{"items":[{"id","title","thumb","channel","duration"}],"nextPageToken":"…"}` |
+| GET | `/api/playlists/{id}/items` | `{"items":[{"id","title","thumb","channel","duration"}],"nextPageToken":"…"}`; accepts `?pageToken=` |
 | POST | `/api/downloads` | Body `{"url":"…","mode":"video|music","playlist":true|false}` → `{"jobs":[Job,…]}`; 400 on bad URL |
 | GET | `/api/jobs` | `{"items":[Job]}` (newest first) |
 | POST | `/api/jobs/{id}/cancel` | `{"ok":true}`; 404 unknown job |
@@ -159,7 +162,7 @@ Download, video mode:
 ```
 yt-dlp --no-playlist --newline --no-warnings \
   --progress-template "dl|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s" \
-  -f "bv*+ba/b" --merge-output-format mp4 \
+  -f "bv*+ba/b" --merge-output-format mp4 --write-thumbnail \
   -o "<dir>/%(title).150s [%(id)s].%(ext)s" <url>
 ```
 
@@ -169,16 +172,24 @@ Download, music mode:
 yt-dlp --no-playlist --newline --no-warnings \
   --progress-template "dl|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s" \
   -f "bestaudio/best" -x --audio-format mp3 --audio-quality 0 \
-  --embed-thumbnail --embed-metadata \
+  --embed-thumbnail --embed-metadata --write-thumbnail \
   -o "<dir>/%(artist,creator,channel,uploader)s - %(title).150s [%(id)s].%(ext)s" <url>
 ```
 
 `--audio-quality 0` means best VBR quality for the MP3 encoder — this is the "best
 quality MP3" requirement. `--embed-thumbnail`/`--embed-metadata` require ffmpeg, which
-is in the image.
+is in the image. `--write-thumbnail` keeps the cover image on disk next to the media
+file, so the library can show it (`--embed-thumbnail` alone deletes it again after
+embedding it into the audio).
 
 The produced file is located after the process exits by globbing the output directory
 for `*[{videoID}].*` — deterministic because the output template always embeds the id.
+Only files that can hold media count; the cover art next to them shares the same base
+name and is never mistaken for the media file.
+
+If yt-dlp exits non-zero *after* the media file was written — a thumbnail that cannot
+be embedded, for instance — the job is still reported as completed and the file is
+added to the library. The file is never orphaned on disk.
 
 ### Playlists and sync
 

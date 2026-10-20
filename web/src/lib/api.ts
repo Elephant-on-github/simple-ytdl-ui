@@ -132,9 +132,9 @@ export const api = {
 
   playlists: () => request<{ items: Playlist[] }>('/api/playlists'),
 
-  playlistItems: (playlistId: string) =>
+  playlistItems: (playlistId: string, pageToken?: string) =>
     request<{ items: PlaylistItem[]; nextPageToken: string }>(
-      `/api/playlists/${enc(playlistId)}/items`,
+      `/api/playlists/${enc(playlistId)}/items${pageToken ? `?pageToken=${enc(pageToken)}` : ''}`,
     ),
 
   createDownload: (body: DownloadRequest) =>

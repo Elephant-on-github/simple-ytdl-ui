@@ -190,7 +190,7 @@ async function submit(): Promise<void> {
 .hero-title {
   position: relative;
   margin-top: var(--sp-4);
-  max-width: 17ch;
+  max-width: 24ch;
 }
 
 .lede {

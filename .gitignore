@@ -1,27 +1,25 @@
-# runtime data (library, jobs, google token)
-data/
-*.json.tmp
+# Go
+/backend/bin/
+/backend/*.exe
+*.test
+*.out
+coverage.*
 
-# frontend
-web/node_modules
-web/dist
-web/.vite
-node_modules
+# Node / frontend
+node_modules/
+web/dist/
+.vite/
 
-# go
-backend/server
-backend/**/*.test
+# The frontend is copied into the backend at image build time.
+backend/internal/api/dist/*
+!backend/internal/api/dist/.gitkeep
 
-# editors / os
+# Runtime data
+/data/
+*.tmp
+
+# Editors and OS
 .DS_Store
 Thumbs.db
-.idea
-.vscode
-*.log
-
-# local env
-.env
-.env.local
-
-# superpowers scratch
-.superpowers/
+.idea/
+.vscode/
