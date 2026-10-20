@@ -23,3 +23,11 @@ backend/internal/api/dist/*
 Thumbs.db
 .idea/
 .vscode/
+
+# Local env
+.env
+.env.local
+
+# superpowers scratch
+.superpowers/
+
