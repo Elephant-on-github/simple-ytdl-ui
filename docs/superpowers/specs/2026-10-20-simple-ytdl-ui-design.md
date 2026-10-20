@@ -225,8 +225,13 @@ added to the library. The file is never orphaned on disk.
   `access_type=offline`, `prompt=consent`, scope `https://www.googleapis.com/auth/youtube.readonly`.
 * The callback exchanges the code with `https://oauth2.googleapis.com/token` and stores
   the **refresh token** only; access tokens are refreshed in memory per request.
-* `state` is a random value kept in memory for 10 minutes and compared on callback
-  (CSRF protection).
+* `state` is a random, one time value the server keeps for ten minutes (CSRF
+  protection). It also remembers the page the sign-in was started from, so the
+  browser lands back where it left off — the whole sign-in happens in the app, no
+  URL has to be copied by hand.
+* The callback redirects to that page with `?signedIn=1` or `?error=<code>`. The
+  playlists view reads the result, shows it, and clears the query string again.
+* A redirect to another site is ignored: only a path of the app itself is accepted.
 * If `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are absent, the backend reports
   `googleEnabled:false` and the UI hides the sign-in affordance entirely.
 

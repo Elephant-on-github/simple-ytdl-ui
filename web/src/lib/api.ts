@@ -124,7 +124,8 @@ export const api = {
 
   config: () => request<AppConfig>('/api/config'),
 
-  googleAuthUrl: () => request<{ url: string }>('/api/auth/google'),
+  googleAuthUrl: (redirect?: string) =>
+    request<{ url: string }>(`/api/auth/google${redirect ? `?redirect=${enc(redirect)}` : ''}`),
 
   session: () => request<Session>('/api/auth/session'),
 

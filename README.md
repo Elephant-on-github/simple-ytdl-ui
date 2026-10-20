@@ -123,6 +123,11 @@ Only the refresh token is stored, in `DATA_DIR/google.json` with `0600` permissi
 scope requested is `youtube.readonly` — the app can read playlists, it cannot modify
 your account.
 
+Signing in happens entirely in the app: press **Continue with Google** on the
+Playlists page, pick an account, and you are back on the Playlists page — signed in,
+with your playlists loaded. If anything goes wrong, the app tells you what, in
+words.
+
 ---
 
 ## How the download works

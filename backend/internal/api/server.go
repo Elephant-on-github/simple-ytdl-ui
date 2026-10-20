@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -39,11 +40,17 @@ type Server struct {
 
 	mu       sync.Mutex
 	oauth    *youtube.OAuth
-	state    string
-	stateEnd time.Time
+	states   map[string]authState
 	cached   *youtube.Client
 
 	mux *http.ServeMux
+}
+
+// authState is a one time OAuth state value. It remembers where the browser
+// was sent from, so the sign-in ends up back where it started.
+type authState struct {
+	redirect string
+	expires  time.Time
 }
 
 // New creates the API server.
@@ -53,6 +60,7 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 		store:   st,
 		manager: mgr,
 		yt:      yt,
+		states:  map[string]authState{},
 		oauth: &youtube.OAuth{
 			ClientID:     cfg.GoogleClientID,
 			ClientSecret: cfg.GoogleClientSecret,
@@ -117,47 +125,55 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleAuthGoogle hands out the URL of Google's consent screen. The optional
+// "redirect" parameter says where the browser should end up afterwards, so the
+// sign-in can be started and finished inside the app.
 func (s *Server) handleAuthGoogle(w http.ResponseWriter, r *http.Request) {
 	if !s.cfg.GoogleEnabled() {
 		writeError(w, http.StatusServiceUnavailable, "google sign-in is not configured on this server")
 		return
 	}
+	redirect := safeRedirect(r.URL.Query().Get("redirect"))
+	state := s.newState(redirect)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"url": s.oauthConfig().AuthURL(s.stateToken()),
+		"url": s.oauthConfig().AuthURL(state),
 	})
 }
 
+// handleAuthCallback finishes the sign-in and sends the browser back to the
+// page it came from.
 func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	if !s.validState(query.Get("state")) {
-		http.Redirect(w, r, "/?error=invalid_state", http.StatusFound)
+	redirect, ok := s.consumeState(query.Get("state"))
+	if !ok {
+		http.Redirect(w, r, withQuery(defaultRedirect, "error", "invalid_state"), http.StatusFound)
 		return
 	}
 	if query.Get("code") == "" {
-		http.Redirect(w, r, "/?error=missing_code", http.StatusFound)
+		http.Redirect(w, r, withQuery(redirect, "error", "missing_code"), http.StatusFound)
 		return
 	}
 
 	token, err := s.oauthConfig().ExchangeToken(r.Context(), query.Get("code"))
 	if err != nil {
 		log.Printf("google oauth exchange failed: %v", err)
-		http.Redirect(w, r, "/?error=exchange_failed", http.StatusFound)
+		http.Redirect(w, r, withQuery(redirect, "error", "exchange_failed"), http.StatusFound)
 		return
 	}
 	if token.RefreshToken == "" {
-		http.Redirect(w, r, "/?error=missing_refresh_token", http.StatusFound)
+		http.Redirect(w, r, withQuery(redirect, "error", "missing_refresh_token"), http.StatusFound)
 		return
 	}
 
 	email := s.oauthConfig().Email(r.Context(), token)
 	if err := s.store.SaveGoogleToken(token.RefreshToken, email); err != nil {
 		log.Printf("could not store the google token: %v", err)
-		http.Redirect(w, r, "/?error=storage_failed", http.StatusFound)
+		http.Redirect(w, r, withQuery(redirect, "error", "storage_failed"), http.StatusFound)
 		return
 	}
 	s.resetClient()
 
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, withQuery(redirect, "signedIn", "1"), http.StatusFound)
 }
 
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
@@ -409,31 +425,68 @@ func (s *Server) forgetClient() {
 	s.yt = nil
 }
 
-// stateToken returns the OAuth state value, generating a new one when the
-// current one expired.
-func (s *Server) stateToken() string {
+// defaultRedirect is where the browser lands when nothing else is known.
+const defaultRedirect = "/playlists"
+
+// newState issues a one time state value that remembers the page the sign-in
+// was started from.
+func (s *Server) newState(redirect string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.state == "" || time.Now().After(s.stateEnd) {
-		s.state = randomToken()
-		s.stateEnd = time.Now().Add(stateTTL)
-	}
-	return s.state
+	s.pruneStatesLocked()
+	token := randomToken()
+	s.states[token] = authState{redirect: redirect, expires: time.Now().Add(stateTTL)}
+	return token
 }
 
-// validState compares the state of the callback with the one of this server.
-func (s *Server) validState(state string) bool {
-	if state == "" {
-		return false
-	}
+// consumeState takes a state value out of the list. A state can only be used
+// once, so a captured callback cannot be replayed.
+func (s *Server) consumeState(token string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.state == "" || time.Now().After(s.stateEnd) {
-		return false
+	st, ok := s.states[token]
+	if !ok {
+		return "", false
 	}
-	return state == s.state
+	delete(s.states, token)
+	if time.Now().After(st.expires) {
+		return "", false
+	}
+	return st.redirect, true
+}
+
+// pruneStatesLocked drops the expired state values. The lock must be held.
+func (s *Server) pruneStatesLocked() {
+	now := time.Now()
+	for token, st := range s.states {
+		if now.After(st.expires) {
+			delete(s.states, token)
+		}
+	}
+}
+
+// safeRedirect keeps the browser on this site: only a path of the app itself
+// is accepted, never an absolute address.
+func safeRedirect(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return defaultRedirect
+	}
+	if strings.ContainsAny(raw, "\r\n") {
+		return defaultRedirect
+	}
+	return raw
+}
+
+// withQuery adds a parameter to a local path.
+func withQuery(path, key, value string) string {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + url.QueryEscape(key) + "=" + url.QueryEscape(value)
 }
 
 func randomToken() string {

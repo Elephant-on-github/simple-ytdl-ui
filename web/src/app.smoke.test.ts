@@ -149,6 +149,22 @@ describe('app smoke', () => {
     app.unmount()
   })
 
+  it('shows why a google sign-in failed when it comes back from google', async () => {
+    const { app, html } = await mount('/playlists?error=exchange_failed')
+
+    expect(html).toContain('did not hand out an access token')
+
+    app.unmount()
+  })
+
+  it('confirms a sign-in that came back from google', async () => {
+    const { app, html } = await mount('/playlists?signedIn=1')
+
+    expect(html).toContain('Signed in as dev@example.com')
+
+    app.unmount()
+  })
+
   it('swaps the accent identity when the mode changes', async () => {
     const { app } = await mount('/')
     const mode = useModeStore()

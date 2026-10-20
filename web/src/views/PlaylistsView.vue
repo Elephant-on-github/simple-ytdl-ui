@@ -1,35 +1,62 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import PlaylistList from '../components/PlaylistList.vue'
 import { useJobsStore } from '../stores/jobs'
 import { useModeStore } from '../stores/mode'
 import { useSessionStore } from '../stores/session'
 import { api, type Playlist } from '../lib/api'
+import { describeOAuthError } from '../lib/oauth'
 
 const session = useSessionStore()
 const mode = useModeStore()
 const jobs = useJobsStore()
+const route = useRoute()
+const router = useRouter()
 
 const playlists = ref<Playlist[]>([])
 const loading = ref(false)
 const error = ref('')
+const errorDetail = ref('')
+const notice = ref('')
 const signingIn = ref(false)
 const syncing = ref<string | null>(null)
 
 onMounted(async () => {
+  // The sign-in comes back from Google with the result in the query string.
+  const code = typeof route.query.error === 'string' ? route.query.error : ''
+  const justSignedIn = route.query.signedIn === '1'
+  if (code || justSignedIn) {
+    void router.replace({ path: route.path, query: {} })
+  }
+
   await session.refresh()
-  if (session.googleEnabled && session.signedIn) await loadPlaylists()
+
+  if (code) {
+    error.value = describeOAuthError(code)
+    errorDetail.value = ''
+    return
+  }
+  if (!session.googleEnabled || !session.signedIn) return
+
+  if (justSignedIn) {
+    notice.value = session.email
+      ? `Signed in as ${session.email}.`
+      : 'Signed in with Google.'
+  }
+  await loadPlaylists()
 })
 
 async function loadPlaylists(): Promise<void> {
   loading.value = true
   error.value = ''
+  errorDetail.value = ''
   try {
     const payload = await api.playlists()
     playlists.value = payload.items ?? []
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Could not load your playlists.'
+    error.value = 'Could not load your playlists.'
+    errorDetail.value = err instanceof Error ? err.message : String(err)
     playlists.value = []
   } finally {
     loading.value = false
@@ -40,7 +67,8 @@ async function signIn(): Promise<void> {
   signingIn.value = true
   error.value = ''
   try {
-    await session.signIn()
+    // Come back to this page when Google is done.
+    await session.signIn(route.path)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Could not start the sign-in.'
     signingIn.value = false
@@ -73,7 +101,10 @@ async function sync(playlist: Playlist): Promise<void> {
       </div>
     </header>
 
-    <p v-if="error" class="notice notice--error t-fine">{{ error }}</p>
+    <p v-if="notice" class="notice notice--ok t-fine">{{ notice }}</p>
+    <p v-if="error" class="notice notice--error t-fine" :title="errorDetail || undefined">
+      {{ error }}
+    </p>
 
     <!-- Google is not configured — the app stays fully usable without it. -->
     <section v-if="session.loaded && !session.googleEnabled" class="card panel">
@@ -241,6 +272,12 @@ async function sync(playlist: Playlist): Promise<void> {
   color: var(--danger);
   background: var(--danger-soft);
   border: 1px solid var(--danger-line);
+}
+
+.notice--ok {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
 }
 
 @media (max-width: 620px) {

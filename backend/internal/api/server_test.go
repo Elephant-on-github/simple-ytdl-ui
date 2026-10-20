@@ -433,8 +433,8 @@ func TestOAuthCallbackStoresTheTokenAndRedirects(t *testing.T) {
 	if rec.Code != http.StatusFound {
 		t.Fatalf("status = %d, want 302 (%s)", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("Location"); got != "/" {
-		t.Errorf("Location = %q, want /", got)
+	if got := rec.Header().Get("Location"); got != "/playlists?signedIn=1" {
+		t.Errorf("Location = %q, want /playlists?signedIn=1", got)
 	}
 
 	refresh, _, ok := h.store.GoogleToken()
@@ -444,6 +444,114 @@ func TestOAuthCallbackStoresTheTokenAndRedirects(t *testing.T) {
 	if refresh != "refresh-token" {
 		t.Errorf("refresh token = %q", refresh)
 	}
+}
+
+func TestOAuthCallbackReturnsToThePageTheSignInStartedFrom(t *testing.T) {
+	h := newHarness(t, fakeytdlp.ModeOK)
+	h.server.cfg.GoogleClientID = "client-id"
+	h.server.cfg.GoogleClientSecret = "client-secret"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"access_token":"access-token","refresh_token":"refresh-token","expires_in":3600,"token_type":"Bearer"}`))
+	}))
+	defer srv.Close()
+
+	h.server.SetOAuth(&youtube.OAuth{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		RedirectURL:  "http://localhost:8080/api/auth/google/callback",
+		TokenURL:     srv.URL,
+		UserInfoURL:  srv.URL,
+	})
+
+	rec := h.do(t, http.MethodGet, "/api/auth/google?redirect=%2Flibrary", nil)
+	authURL := decode(t, rec)["url"].(string)
+	state := stateFromURL(authURL)
+
+	rec = h.do(t, http.MethodGet, "/api/auth/google/callback?code=the-code&state="+state, nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302 (%s)", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Location"); got != "/library?signedIn=1" {
+		t.Errorf("Location = %q, want /library?signedIn=1", got)
+	}
+}
+
+func TestOAuthStateCanOnlyBeUsedOnce(t *testing.T) {
+	h := newHarness(t, fakeytdlp.ModeOK)
+	h.server.cfg.GoogleClientID = "client-id"
+	h.server.cfg.GoogleClientSecret = "client-secret"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"access_token":"access-token","refresh_token":"refresh-token","expires_in":3600,"token_type":"Bearer"}`))
+	}))
+	defer srv.Close()
+
+	h.server.SetOAuth(&youtube.OAuth{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		RedirectURL:  "http://localhost:8080/api/auth/google/callback",
+		TokenURL:     srv.URL,
+		UserInfoURL:  srv.URL,
+	})
+
+	rec := h.do(t, http.MethodGet, "/api/auth/google", nil)
+	state := stateFromURL(decode(t, rec)["url"].(string))
+
+	rec = h.do(t, http.MethodGet, "/api/auth/google/callback?code=the-code&state="+state, nil)
+	if got := rec.Header().Get("Location"); got != "/playlists?signedIn=1" {
+		t.Fatalf("Location = %q, want /playlists?signedIn=1", got)
+	}
+
+	// The same state a second time must not sign anybody in.
+	rec = h.do(t, http.MethodGet, "/api/auth/google/callback?code=the-code&state="+state, nil)
+	if got := rec.Header().Get("Location"); !strings.Contains(got, "error=invalid_state") {
+		t.Errorf("Location = %q, want an error about the state", got)
+	}
+}
+
+func TestOAuthRedirectStaysOnThisSite(t *testing.T) {
+	h := newHarness(t, fakeytdlp.ModeOK)
+	h.server.cfg.GoogleClientID = "client-id"
+	h.server.cfg.GoogleClientSecret = "client-secret"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"access_token":"access-token","refresh_token":"refresh-token","expires_in":3600,"token_type":"Bearer"}`))
+	}))
+	defer srv.Close()
+
+	h.server.SetOAuth(&youtube.OAuth{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		RedirectURL:  "http://localhost:8080/api/auth/google/callback",
+		TokenURL:     srv.URL,
+		UserInfoURL:  srv.URL,
+	})
+
+	rec := h.do(t, http.MethodGet, "/api/auth/google?redirect=https%3A%2F%2Fevil.example%2Fsteal", nil)
+	state := stateFromURL(decode(t, rec)["url"].(string))
+
+	rec = h.do(t, http.MethodGet, "/api/auth/google/callback?code=the-code&state="+state, nil)
+	got := rec.Header().Get("Location")
+	if !strings.HasPrefix(got, "/") || strings.HasPrefix(got, "//") {
+		t.Errorf("Location = %q, want a path on this site", got)
+	}
+}
+
+// stateFromURL pulls the state value out of an authorization URL.
+func stateFromURL(authURL string) string {
+	idx := strings.Index(authURL, "state=")
+	if idx < 0 {
+		return ""
+	}
+	state := authURL[idx+len("state="):]
+	if end := strings.Index(state, "&"); end >= 0 {
+		state = state[:end]
+	}
+	return state
 }
 
 func TestOAuthCallbackRejectsAWrongState(t *testing.T) {

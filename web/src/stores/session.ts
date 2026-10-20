@@ -54,9 +54,18 @@ export const useSessionStore = defineStore('session', () => {
     return inflight
   }
 
-  /** Redirect the browser to Google's consent screen. */
-  async function signIn(): Promise<void> {
-    const { url } = await api.googleAuthUrl()
+  /**
+   * The URL of Google's consent screen. The redirect says where the browser
+   * should end up afterwards, so the sign-in stays inside the app.
+   */
+  async function authUrl(redirect?: string): Promise<string> {
+    const { url } = await api.googleAuthUrl(redirect)
+    return url
+  }
+
+  /** Send the browser to Google's consent screen. */
+  async function signIn(redirect?: string): Promise<void> {
+    const url = await authUrl(redirect)
     window.location.href = url
   }
 
@@ -80,6 +89,7 @@ export const useSessionStore = defineStore('session', () => {
     error,
     status,
     refresh,
+    authUrl,
     signIn,
     signOut,
   }
