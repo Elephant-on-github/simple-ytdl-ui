@@ -35,7 +35,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/server 
 # ---------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
-ARG TARGETARCH=amd64
+# No default value on purpose: declaring "ARG TARGETARCH=amd64" would override
+# the architecture BuildKit injects, and the arm64 image would get the amd64
+# yt-dlp binary.
+ARG TARGETARCH
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates ffmpeg tzdata curl \
