@@ -35,7 +35,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/server 
 # ---------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
-ARG YT_DLP_VERSION=latest
 ARG TARGETARCH=amd64
 
 RUN apt-get update \
@@ -43,14 +42,15 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # yt-dlp is pinned to a fresh release: YouTube breaks older versions regularly.
+# The standalone binary is published per architecture.
 RUN set -eux; \
     case "${TARGETARCH}" in \
-      amd64) arch=amd64 ;; \
-      arm64) arch=arm64 ;; \
+      amd64) asset=yt-dlp_linux ;; \
+      arm64) asset=yt-dlp_linux_aarch64 ;; \
       *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     curl -fsSL -o /usr/local/bin/yt-dlp \
-      "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"; \
+      "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${asset}"; \
     chmod 0755 /usr/local/bin/yt-dlp; \
     yt-dlp --version
 

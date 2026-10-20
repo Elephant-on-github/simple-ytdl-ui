@@ -2,8 +2,6 @@ services:
   app:
     build:
       context: .
-      args:
-        YT_DLP_VERSION: latest
     image: ghcr.io/elephant-on-github/simple-ytdl-ui:latest
     container_name: simple-ytdl-ui
     restart: unless-stopped
