@@ -1,0 +1,170 @@
+# simple-ytdl-ui
+
+[![GHCR](https://ghcr.io/badge/Elephant-on-github/simple-ytdl-ui)](https://github.com/Elephant-on-github/simple-ytdl-ui/pkgs/container/simple-ytdl-ui)
+[![Go](https://img.shields.io/badge/backend-Go-1.23-00ADD8?logo=go&logoColor=white)](backend/)
+[![Vue](https://img.shields.io/badge/frontend-Vue_3-42b883?logo=vuedotjs&logoColor=white)](web/)
+[![License](https://img.shields.io/badge/license-MIT-8b8b94)](LICENSE)
+
+A self-hosted web app that turns YouTube URLs into files.
+
+Paste a link, pick **Video** or **MP3**, and watch the queue fill up. Everything you
+download lands in a browsable, playable library on your own disk. Sign in with Google
+(optional) and your playlists show up too, ready to sync.
+
+* **One container.** Go backend + Vue frontend + `yt-dlp` + `ffmpeg` in a single image.
+* **Best-quality MP3.** The music toggle extracts the highest-bitrate audio stream to
+  MP3 with cover art and tags embedded.
+* **Playlists.** A playlist URL becomes one job per track, each with its own progress,
+  each individually cancellable.
+* **Your playlists (optional).** Google sign-in lets you sync the playlists you
+  already have. The app is fully functional without it.
+* **No database.** State is plain JSON on a volume you mount.
+
+---
+
+## Quick start
+
+```bash
+docker run -d \
+  --name simple-ytdl-ui \
+  -p 8080:8080 \
+  -v "$PWD/data:/data" \
+  ghcr.io/elephant-on-github/simple-ytdl-ui:latest
+```
+
+Open <http://localhost:8080>.
+
+Or with compose:
+
+```bash
+docker compose up -d
+```
+
+---
+
+## Configuration
+
+Everything is environment variables. Only `DATA_DIR` really matters; the rest have
+sensible defaults.
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `8080` | Port the server listens on. |
+| `DATA_DIR` | `/data` | Where downloads, the library index and the Google token are stored. Mount this. |
+| `YTDLP_BIN` | `yt-dlp` | Path to the `yt-dlp` binary. |
+| `FFMPEG_BIN` | `ffmpeg` | Path to `ffmpeg` (needed for MP3 extraction and thumbnail embedding). |
+| `CONCURRENT_DOWNLOADS` | `2` | How many downloads run at the same time. |
+| `DEFAULT_MODE` | `video` | Initial mode of the Video/MP3 toggle: `video` or `music`. |
+| `GOOGLE_CLIENT_ID` | – | Google OAuth client id. Unset ⇒ Google features are off. |
+| `GOOGLE_CLIENT_SECRET` | – | Google OAuth client secret. Unset ⇒ Google features are off. |
+| `GOOGLE_REDIRECT_URL` | `http://localhost:8080/api/auth/google/callback` | Must match the redirect URI registered in Google Cloud. |
+| `WEB_DIR` | – | Serve the frontend from a directory instead of the embedded build (development). |
+
+---
+
+## Google sign-in (optional)
+
+The app never requires Google. If you want your own playlists in the UI:
+
+1. Open the [Google Cloud console](https://console.cloud.google.com/), create a project
+   and enable the **YouTube Data API v3**.
+2. Configure the OAuth consent screen (add your own email as a test user).
+3. Create an **OAuth client ID** of type *Web application*.
+4. Add the redirect URI `http://localhost:8080/api/auth/google/callback`
+   (or `https://your-host/api/auth/google/callback` if you expose the app publicly).
+5. Pass the credentials to the container:
+
+   ```yaml
+   environment:
+     GOOGLE_CLIENT_ID: "xxxx.apps.googleusercontent.com"
+     GOOGLE_CLIENT_SECRET: "xxxx"
+     GOOGLE_REDIRECT_URL: "http://localhost:8080/api/auth/google/callback"
+   ```
+
+Only the refresh token is stored, in `DATA_DIR/google.json` with `0600` permissions. The
+scope requested is `youtube.readonly` — the app can read playlists, it cannot modify
+your account.
+
+---
+
+## How the download works
+
+| Mode | yt-dlp format | Result |
+|---|---|---|
+| Video | `bv*+ba/b`, merged to MP4 | best video + best audio, muxed into an `.mp4` |
+| MP3 | `bestaudio/best`, `-x --audio-format mp3 --audio-quality 0` | highest-bitrate audio as MP3, with embedded cover art and metadata |
+
+Files are named `Artist - Title [videoId].mp3` (or `Title [videoId].mp4`) so nothing
+overwrites anything else. Playlist downloads are grouped into a folder per playlist.
+
+---
+
+## Local development
+
+Requires Go 1.23+, Bun, and `yt-dlp` + `ffmpeg` on your `PATH`.
+
+```bash
+# backend
+cd backend
+go test ./...
+go run ./cmd/server            # serves the API on :8080
+
+# frontend (second terminal)
+cd web
+bun install
+bun run dev                    # http://localhost:5173, proxies /api to :8080
+```
+
+`WEB_DIR` lets the Go server serve a frontend build from disk:
+
+```bash
+cd web && bun run build
+cd ../backend && WEB_DIR=../web/dist go run ./cmd/server
+```
+
+---
+
+## Repository layout
+
+```
+backend/     Go API, yt-dlp runner, job queue, YouTube/Google client
+web/         Vue 3 + TypeScript frontend (Vite, Pinia, Vue Router)
+docs/        design spec and implementation plan
+Dockerfile   three stages: bun build -> go build -> debian runtime
+```
+
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/health` | liveness |
+| `GET` | `/api/config` | feature flags and defaults |
+| `GET` | `/api/auth/google` | Google authorization URL |
+| `GET` | `/api/auth/google/callback` | OAuth redirect target |
+| `GET` | `/api/auth/session` | current session |
+| `POST` | `/api/auth/logout` | forget the stored token |
+| `GET` | `/api/playlists` | your YouTube playlists |
+| `GET` | `/api/playlists/{id}/items` | items of a playlist |
+| `POST` | `/api/downloads` | queue a URL (single or playlist) |
+| `GET` | `/api/jobs` | the job queue |
+| `POST` | `/api/jobs/{id}/cancel` | cancel a job |
+| `GET` | `/api/library` | everything downloaded |
+| `DELETE` | `/api/library/{id}` | delete an item and its file |
+| `GET` | `/api/library/{id}/stream` | stream the media (Range supported) |
+| `GET` | `/api/library/{id}/cover` | cover art |
+
+---
+
+## Notes and limits
+
+* `yt-dlp` is pinned to the latest release at image build time. If YouTube changes
+  something and downloads start failing, pull a newer image.
+* This tool downloads material that YouTube's terms of service restrict you from
+  downloading. Use it for content you have the right to keep. You are responsible for
+  what you download.
+* The API has no authentication beyond the optional Google sign-in — run it on your
+  own machine or behind a reverse proxy if you expose it.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

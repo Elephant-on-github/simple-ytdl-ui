@@ -1,0 +1,16 @@
+# build context noise — keep the image small and the cache stable
+.git
+.github
+.gitignore
+**/node_modules
+web/dist
+backend/internal/api/dist
+data
+docs
+*.md
+LICENSE
+.dockerignore
+docker-compose.yml
+.superpowers
+**/*.log
+**/.DS_Store

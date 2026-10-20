@@ -1,0 +1,26 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        YT_DLP_VERSION: latest
+    image: ghcr.io/elephant-on-github/simple-ytdl-ui:latest
+    container_name: simple-ytdl-ui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      # --- server ---
+      PORT: "8080"
+      DATA_DIR: /data
+      YTDLP_BIN: /usr/local/bin/yt-dlp
+      FFMPEG_BIN: /usr/bin/ffmpeg
+      CONCURRENT_DOWNLOADS: "2"
+      DEFAULT_MODE: video
+      TZ: UTC
+      # --- optional Google sign-in (leave unset to run without it) ---
+      # GOOGLE_CLIENT_ID: "xxxx.apps.googleusercontent.com"
+      # GOOGLE_CLIENT_SECRET: "xxxx"
+      # GOOGLE_REDIRECT_URL: "http://localhost:8080/api/auth/google/callback"

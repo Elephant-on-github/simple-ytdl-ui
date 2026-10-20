@@ -1,0 +1,27 @@
+# runtime data (library, jobs, google token)
+data/
+*.json.tmp
+
+# frontend
+web/node_modules
+web/dist
+web/.vite
+node_modules
+
+# go
+backend/server
+backend/**/*.test
+
+# editors / os
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.log
+
+# local env
+.env
+.env.local
+
+# superpowers scratch
+.superpowers/
