@@ -56,6 +56,11 @@ docker compose -f docker-compose.build.yml up -d --build
 | `1.0.0`, `1.0` | a release, cut by tagging the repository `v1.0.0` |
 | `sha-abc1234` | the build of a single commit |
 
+The image is built and published by `.github/workflows/docker.yml` on every push to
+`main`. A container package is private by default; the workflow makes it public, and
+if that ever fails, flip the visibility once in the package settings
+([packages](https://github.com/users/Elephant-on-github/packages/container/package/simple-ytdl-ui/settings)).
+
 ---
 
 ## Configuration

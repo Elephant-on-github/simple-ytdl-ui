@@ -98,6 +98,10 @@ func (r *Runner) Probe(ctx context.Context, rawURL string, flat bool) (Info, err
 	if err := json.Unmarshal(stdout.Bytes(), &info); err != nil {
 		return info, fmt.Errorf("yt-dlp probe returned invalid JSON: %w", err)
 	}
+	if flat && info.PlaylistTitle == "" {
+		// yt-dlp names the playlist "title" in a flat listing.
+		info.PlaylistTitle = info.Title
+	}
 	return info, nil
 }
 

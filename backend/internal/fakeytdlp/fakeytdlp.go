@@ -105,7 +105,7 @@ id="${id%%\?*}"
 
 if [ "$is_json" = "1" ]; then
   if [ "$flat" = "1" ]; then
-    printf '%s\n' '{"_type":"playlist","id":"PLfake","title":"Fake Playlist","playlist_count":3,"entries":[{"id":"vid001","title":"First Fake Video","url":"https://www.youtube.com/watch?v=vid001","duration":61},{"id":"vid002","title":"Second Fake Video","url":"https://www.youtube.com/watch?v=vid002","duration":62},{"id":"vid003","title":"Third Fake Video","url":"https://www.youtube.com/watch?v=vid003","duration":63}]}'
+    printf '%s\n' '{"_type":"playlist","id":"PLfake","title":"Fake Playlist","playlist_title":"Fake Playlist","playlist_count":3,"entries":[{"id":"vid001","title":"First Fake Video","url":"https://www.youtube.com/watch?v=vid001","duration":61},{"id":"vid002","title":"Second Fake Video","url":"https://www.youtube.com/watch?v=vid002","duration":62},{"id":"vid003","title":"Third Fake Video","url":"https://www.youtube.com/watch?v=vid003","duration":63}]}'
   else
     printf '%s\n' '{"id":"'"$id"'","title":"Fake Video","uploader":"Fake Artist","duration":212,"thumbnail":"https://example.test/thumb.jpg","webpage_url":"https://www.youtube.com/watch?v='"$id"'","ext":"mp4","filesize":123456}'
   fi
