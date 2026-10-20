@@ -31,8 +31,13 @@ func newFixture(t *testing.T, mode string) *fixture {
 		t.Fatalf("write fake yt-dlp: %v", err)
 	}
 
-	// Every download appends a line to this file so the tests can count them.
-	count := filepath.Join(t.TempDir(), "downloads.txt")
+	// Every download creates a directory in this folder so the tests can
+	// count them. A directory is used because two downloads that run at the
+	// same time would overwrite a line in a file.
+	count := filepath.Join(t.TempDir(), "downloads")
+	if err := os.MkdirAll(count, 0o755); err != nil {
+		t.Fatalf("create the counter directory: %v", err)
+	}
 	t.Setenv("FAKE_YTDLP_COUNT", count)
 
 	st := store.New(dir)
@@ -44,14 +49,14 @@ func newFixture(t *testing.T, mode string) *fixture {
 
 func (f *fixture) downloads(t *testing.T) int {
 	t.Helper()
-	raw, err := os.ReadFile(f.count)
+	entries, err := os.ReadDir(f.count)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return 0
 		}
-		t.Fatalf("read download counter: %v", err)
+		t.Fatalf("read the download counter: %v", err)
 	}
-	return len(strings.Fields(string(raw)))
+	return len(entries)
 }
 
 func jobByID(jobs []store.Job, id string) (store.Job, bool) {

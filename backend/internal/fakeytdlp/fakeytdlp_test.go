@@ -52,7 +52,10 @@ func TestShellScriptCountsDownloads(t *testing.T) {
 		t.Fatalf("write the script: %v", err)
 	}
 
-	count := filepath.Join(t.TempDir(), "downloads.txt")
+	count := filepath.Join(t.TempDir(), "downloads")
+	if err := os.MkdirAll(count, 0o755); err != nil {
+		t.Fatalf("create the counter directory: %v", err)
+	}
 	cmd := exec.Command(sh, path, "-x", "-o", filepath.Join(dir, "out.%(ext)s"), "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 	cmd.Env = append(os.Environ(), "FAKE_YTDLP_COUNT="+count)
 	out, err := cmd.CombinedOutput()
@@ -60,12 +63,12 @@ func TestShellScriptCountsDownloads(t *testing.T) {
 		t.Fatalf("the shell fake failed: %v\n%s", err, out)
 	}
 
-	raw, err := os.ReadFile(count)
+	marks, err := os.ReadDir(count)
 	if err != nil {
 		t.Fatalf("the shell fake did not count the download: %v", err)
 	}
-	if strings.TrimSpace(string(raw)) != "download" {
-		t.Errorf("the counter holds %q, want one download", string(raw))
+	if len(marks) != 1 {
+		t.Errorf("the counter holds %d downloads, want 1", len(marks))
 	}
 
 	mp3 := filepath.Join(dir, "Fake Artist - Fake Video [dQw4w9WgXcQ].mp3")

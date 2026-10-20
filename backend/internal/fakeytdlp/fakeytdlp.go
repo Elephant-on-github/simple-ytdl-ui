@@ -12,6 +12,11 @@
 // Three behaviours are available through the FAKE_YTDLP_MODE environment
 // variable: "ok" (default), "fail" (writes to stderr and exits 1) and "sleep"
 // (sleeps before finishing, so a running job can be cancelled).
+//
+// Every download creates a directory inside the FAKE_YTDLP_COUNT directory, so
+// the tests can count the downloads. A directory is used instead of a line in
+// a file because two downloads that run at the same time would overwrite each
+// other's line.
 package fakeytdlp
 
 import (
@@ -116,7 +121,8 @@ echo "dl|downloading|5242880|10485760|1048576.5|3"
 echo "dl|finished|10485760|10485760|0|0"
 
 if [ -n "${FAKE_YTDLP_COUNT:-}" ]; then
-  echo download >> "$FAKE_YTDLP_COUNT"
+  mkdir -p "$FAKE_YTDLP_COUNT"
+  mkdir "$FAKE_YTDLP_COUNT/$$" 2>/dev/null || true
 fi
 
 if [ "$mode" = "sleep" ]; then
@@ -181,7 +187,12 @@ for %%F in ("%URL%") do set "ID=%%~nxF"
 if "%ISJSON%"=="1" goto json
 echo dl^|downloading^|5242880^|10485760^|1048576.5^|3
 echo dl^|finished^|10485760^|10485760^|0^|0
-if not "%FAKE_YTDLP_COUNT%"=="" echo download>>"%FAKE_YTDLP_COUNT%"
+if "%FAKE_YTDLP_COUNT%"=="" goto nomark
+:mark
+set "MARK=%FAKE_YTDLP_COUNT%\d-%RANDOM%%RANDOM%%RANDOM%"
+mkdir "%MARK%" >nul 2>&1
+if errorlevel 1 goto mark
+:nomark
 if not "%MODE%"=="sleep" goto writefile
 ping -n 11 127.0.0.1 >nul 2>&1
 :writefile
