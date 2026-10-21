@@ -24,8 +24,13 @@ services:
       CONCURRENT_DOWNLOADS: "2"
       DEFAULT_MODE: video
       TZ: UTC
+      # --- optional: a YouTube session, so your own playlists are listed ---
+      # YTDLP_COOKIES: /config/cookies.txt
       # --- optional: lock the app behind a password ---
       # AUTH_PASSWORD: "choose-something-long"
+      # --- optional: the Google sign-in (an alternative to the cookies) ---
+      # GOOGLE_CLIENT_ID: "xxxx.apps.googleusercontent.com"
+      # GOOGLE_CLIENT_SECRET: "xxxx"
       # --- optional Google sign-in (leave unset to run without it) ---
       # GOOGLE_CLIENT_ID: "xxxx.apps.googleusercontent.com"
       # GOOGLE_CLIENT_SECRET: "xxxx"

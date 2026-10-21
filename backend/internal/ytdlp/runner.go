@@ -21,6 +21,11 @@ type Runner struct {
 	// FfmpegBin is the path to the ffmpeg binary. When it is set it is handed
 	// to yt-dlp, so the server does not depend on ffmpeg being on the PATH.
 	FfmpegBin string
+	// CookiesFile is a Netscape cookies.txt with a YouTube session.
+	CookiesFile string
+	// CookiesFromBrowser asks yt-dlp to read the cookies from a browser
+	// profile on this machine.
+	CookiesFromBrowser string
 }
 
 // NewRunner returns a runner that uses the given yt-dlp binary.
@@ -35,6 +40,33 @@ func NewRunner(bin string) *Runner {
 func (r *Runner) WithFfmpeg(path string) *Runner {
 	r.FfmpegBin = resolveFfmpeg(path)
 	return r
+}
+
+// WithCookies gives the runner a YouTube session: either a cookies file or a
+// browser profile to read the cookies from. With a session the server reaches
+// private playlists and lists the playlists of the account — no Google Cloud
+// project and no API key involved.
+func (r *Runner) WithCookies(file, browser string) *Runner {
+	r.CookiesFile = file
+	r.CookiesFromBrowser = browser
+	return r
+}
+
+// HasCookies reports whether the runner carries a YouTube session.
+func (r *Runner) HasCookies() bool {
+	return r.CookiesFile != "" || r.CookiesFromBrowser != ""
+}
+
+// cookieArgs are the arguments that hand the session to yt-dlp.
+func (r *Runner) cookieArgs() []string {
+	switch {
+	case r.CookiesFile != "":
+		return []string{"--cookies", r.CookiesFile}
+	case r.CookiesFromBrowser != "":
+		return []string{"--cookies-from-browser", r.CookiesFromBrowser}
+	default:
+		return nil
+	}
 }
 
 // resolveFfmpeg turns the configured ffmpeg into something yt-dlp can use.
@@ -83,7 +115,9 @@ func (r *Runner) Probe(ctx context.Context, rawURL string, flat bool) (Info, err
 	} else {
 		args = append(args, "--no-playlist")
 	}
-	args = append(args, "--no-warnings", rawURL)
+	args = append(args, "--no-warnings")
+	args = append(args, r.cookieArgs()...)
+	args = append(args, rawURL)
 
 	cmd := prepareCmdPlatform(ctx, r.Bin, args...)
 	var stdout, stderr bytes.Buffer
@@ -117,6 +151,7 @@ func (r *Runner) Download(ctx context.Context, mode Mode, outDir, rawURL string,
 	}
 
 	args := BuildDownloadArgs(mode, absDir, rawURL, r.FfmpegBin)
+	args = append(args[:len(args)-1], append(r.cookieArgs(), args[len(args)-1])...)
 	cmd := prepareCmdPlatform(ctx, r.Bin, args...)
 	cmd.WaitDelay = 2 * time.Second
 

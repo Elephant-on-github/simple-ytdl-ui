@@ -54,6 +54,38 @@ func TestResolveFfmpegKeepsAPath(t *testing.T) {
 	}
 }
 
+func TestCookieArgsAreHandedToYtDlp(t *testing.T) {
+	r := fakeRunner(t, fakeytdlp.ModeOK)
+
+	if r.HasCookies() {
+		t.Error("HasCookies() = true without a session")
+	}
+	if got := r.cookieArgs(); len(got) != 0 {
+		t.Errorf("cookieArgs() = %v, want none", got)
+	}
+
+	r.WithCookies("/data/cookies.txt", "")
+	if !r.HasCookies() {
+		t.Error("HasCookies() = false with a cookies file")
+	}
+	if got := strings.Join(r.cookieArgs(), " "); got != "--cookies /data/cookies.txt" {
+		t.Errorf("cookieArgs() = %q", got)
+	}
+
+	r.WithCookies("", "firefox")
+	if got := strings.Join(r.cookieArgs(), " "); got != "--cookies-from-browser firefox" {
+		t.Errorf("cookieArgs() = %q", got)
+	}
+}
+
+func TestPlaylistsWithoutASession(t *testing.T) {
+	r := fakeRunner(t, fakeytdlp.ModeOK)
+
+	if _, err := r.Playlists(context.Background()); err == nil {
+		t.Error("Playlists() succeeded without a session, want an error")
+	}
+}
+
 func TestProbeReturnsCannedInfo(t *testing.T) {
 	r := fakeRunner(t, fakeytdlp.ModeOK)
 

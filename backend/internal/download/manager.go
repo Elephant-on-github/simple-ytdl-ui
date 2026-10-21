@@ -473,6 +473,18 @@ func (m *Manager) WaitIdle() {
 	}
 }
 
+// HasCookies reports whether the server carries a YouTube session.
+func (m *Manager) HasCookies() bool {
+	return m.runner.HasCookies()
+}
+
+// Playlists lists the playlists of the account the YouTube session belongs to.
+// It works without a Google Cloud project: the session in the cookies is all
+// that is needed.
+func (m *Manager) Playlists(ctx context.Context) ([]ytdlp.Playlist, error) {
+	return m.runner.Playlists(ctx)
+}
+
 // Close stops the worker pool and cancels the downloads that are still
 // running.
 func (m *Manager) Close() {

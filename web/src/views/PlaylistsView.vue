@@ -37,14 +37,17 @@ onMounted(async () => {
     errorDetail.value = ''
     return
   }
-  if (!session.googleEnabled || !session.signedIn) return
 
-  if (justSignedIn) {
-    notice.value = session.email
-      ? `Signed in as ${session.email}.`
-      : 'Signed in with Google.'
+  // The playlists come from the YouTube session in the cookies, or from the
+  // YouTube Data API once the Google sign-in is done.
+  if (session.playlistsAvailable) {
+    if (justSignedIn && session.playlistSource === 'google') {
+      notice.value = session.email
+        ? `Signed in as ${session.email}.`
+        : 'Signed in with Google.'
+    }
+    await loadPlaylists()
   }
-  await loadPlaylists()
 })
 
 async function loadPlaylists(): Promise<void> {
@@ -109,23 +112,24 @@ async function sync(playlist: Playlist): Promise<void> {
       {{ error }}
     </p>
 
-    <!-- Google is not configured — the app stays fully usable without it. -->
-    <section v-if="session.loaded && !session.googleEnabled" class="card frame">
+    <!-- No YouTube session and no Google client: the playlists stay out of reach. -->
+    <section v-if="session.loaded && !session.playlistsAvailable" class="card frame">
       <span class="tick tick--tl" aria-hidden="true" />
       <span class="tick tick--tr" aria-hidden="true" />
       <span class="tick tick--bl" aria-hidden="true" />
       <span class="tick tick--br" aria-hidden="true" />
 
       <p class="t-label">Optional</p>
-      <h2 class="t-italic card-title">Sign-in is not configured</h2>
+      <h2 class="t-italic card-title">No playlists yet</h2>
       <p class="t-serif-body card-copy">
-        Browsing your own YouTube playlists needs a Google OAuth client. Set
-        <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> on the server
-        to enable it.
+        To browse the playlists of your own account, give the server a YouTube session:
+        a <code>cookies.txt</code> of your account, or a browser profile to read the
+        cookies from. No Google Cloud project, no API key, no quota.
       </p>
       <p class="t-meta card-note">
-        Everything else works without it — paste a playlist link on the Download page and
-        it syncs straight into your library.
+        A Google OAuth client works too, if you would rather sign in with a button.
+        Everything else works without either — paste a playlist link on the Download
+        page and it syncs straight into your library.
       </p>
       <RouterLink to="/" class="step card-cta">
         Paste a playlist link
@@ -134,7 +138,10 @@ async function sync(playlist: Playlist): Promise<void> {
     </section>
 
     <!-- Google is configured but the visitor has not signed in. -->
-    <section v-else-if="session.loaded && !session.signedIn" class="card frame">
+    <section
+      v-else-if="session.loaded && session.googleEnabled && !session.signedIn"
+      class="card frame"
+    >
       <span class="tick tick--tl" aria-hidden="true" />
       <span class="tick tick--tr" aria-hidden="true" />
       <span class="tick tick--bl" aria-hidden="true" />
@@ -152,8 +159,8 @@ async function sync(playlist: Playlist): Promise<void> {
       </button>
     </section>
 
-    <!-- Signed in. -->
-    <template v-else-if="session.signedIn">
+    <!-- The playlists are there — from the session in the cookies or from Google. -->
+    <template v-else-if="session.playlistsAvailable">
       <div class="toolbar">
         <p class="t-meta">
           Syncing queues every track as

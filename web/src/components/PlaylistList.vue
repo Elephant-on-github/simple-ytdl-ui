@@ -71,7 +71,7 @@ function markBroken(id: string): void {
 
           <span class="pl-text">
             <span class="pl-title t-italic">{{ playlist.title }}</span>
-            <span class="pl-count t-meta tnum">
+            <span v-if="playlist.itemCount" class="pl-count t-meta tnum">
               {{ playlist.itemCount }} {{ playlist.itemCount === 1 ? 'item' : 'items' }}
             </span>
           </span>

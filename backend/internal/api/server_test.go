@@ -190,6 +190,41 @@ func TestAPasswordGuardsTheApp(t *testing.T) {
 	}
 }
 
+func TestThePlaylistsComeFromTheSessionInTheCookies(t *testing.T) {
+	// With a YouTube session the playlists are listed without Google at all.
+	h := newHarness(t, fakeytdlp.ModeOK)
+	h.server.manager = download.NewManager(
+		ytdlp.NewRunner(h.server.cfg.YtDlpBin).WithCookies("/data/cookies.txt", ""),
+		h.store, h.dir, 1)
+
+	rec := h.do(t, http.MethodGet, "/api/playlists", nil)
+	if rec.Code == http.StatusUnauthorized {
+		t.Errorf("the playlists are refused even though there is a session: %s", rec.Body.String())
+	}
+
+	doc := decode(t, h.do(t, http.MethodGet, "/api/auth/session", nil))
+	if doc["playlistSource"] != "cookies" {
+		t.Errorf("playlistSource = %v, want cookies", doc["playlistSource"])
+	}
+	if doc["playlistsAvailable"] != true {
+		t.Errorf("playlistsAvailable = %v, want true", doc["playlistsAvailable"])
+	}
+}
+
+func TestPlaylistsWithoutASessionOrGoogle(t *testing.T) {
+	h := newHarness(t, fakeytdlp.ModeOK)
+
+	rec := h.do(t, http.MethodGet, "/api/playlists", nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+
+	doc := decode(t, h.do(t, http.MethodGet, "/api/auth/session", nil))
+	if doc["playlistsAvailable"] != false {
+		t.Errorf("playlistsAvailable = %v, want false", doc["playlistsAvailable"])
+	}
+}
+
 func TestTheHealthCheckWorksWithoutASession(t *testing.T) {
 	// The container health check has no cookie.
 	h := newGuardedHarness(t, "hunter2")

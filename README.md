@@ -85,9 +85,11 @@ sensible defaults.
 | `DEFAULT_MODE` | `video` | Initial mode of the Video/MP3 toggle: `video` or `music`. |
 | `AUTH_PASSWORD` | – | Password for the app. Unset ⇒ the app is open. Set it ⇒ a login screen guards everything. |
 | `AUTH_ALLOWED_EMAILS` | – | Accounts that may sign in with Google instead of the password, comma separated. |
-| `GOOGLE_CLIENT_ID` | – | Google OAuth client id. Unset ⇒ Google features are off. |
-| `GOOGLE_CLIENT_SECRET` | – | Google OAuth client secret. Unset ⇒ Google features are off. |
-| `GOOGLE_REDIRECT_URL` | `http://localhost:8080/api/auth/google/callback` | Must match the redirect URI registered in Google Cloud. |
+| `YTDLP_COOKIES` | – | A `cookies.txt` with a YouTube session. With it the server lists your playlists and reaches private ones — no Google Cloud needed. |
+| `YTDLP_COOKIES_FROM_BROWSER` | – | Read the YouTube session from a browser profile instead, e.g. `firefox` or `chrome`. |
+| `GOOGLE_CLIENT_ID` | – | Google OAuth client id. Unset ⇒ the Google sign-in is off. |
+| `GOOGLE_CLIENT_SECRET` | – | Google OAuth client secret. Unset ⇒ the Google sign-in is off. |
+| `GOOGLE_REDIRECT_URL` | *(from the request)* | The URI Google sends the browser back to. Leave it unset and the server takes the address from the request; set it when the app answers on another address. Must match the registered URI exactly. |
 | `WEB_DIR` | – | Serve the frontend from a directory instead of the embedded build (development). |
 
 ### Locking the app
@@ -139,24 +141,65 @@ files land in `<LIBRARY_DIR>/music/…` and `<LIBRARY_DIR>/video/…`.
 
 ---
 
-## Google sign-in (optional)
+## Your own playlists
 
-The app never requires Google. If you want your own playlists in the UI:
+You do **not** need a Google Cloud project, an OAuth client or an API key. Give the
+server a YouTube session and it reads your playlists straight from YouTube — the same
+way `yt-dlp` does.
 
-1. Open the [Google Cloud console](https://console.cloud.google.com/), create a project
-   and enable the **YouTube Data API v3**.
+**A cookies file** (works in a container):
+
+1. Export the cookies of your YouTube account as a `cookies.txt`
+   (a browser extension such as *Get cookies.txt LOCALLY* does this).
+2. Mount it into the container and point the server at it:
+
+   ```yaml
+   volumes:
+     - ./data:/data
+     - ./library:/library
+     - ./cookies.txt:/config/cookies.txt:ro
+   environment:
+     YTDLP_COOKIES: /config/cookies.txt
+   ```
+
+**Or a browser profile on the machine** (no file to copy around):
+
+```yaml
+environment:
+  YTDLP_COOKIES_FROM_BROWSER: firefox   # or chrome, edge, brave, …
+```
+
+With a session the server also reaches **private** playlists and age-restricted
+videos, and `youtube.com/feed/playlists` is listed instead of the Data API.
+
+> Keep the cookies file private — it is a full session of your account. Rotate it
+> when you sign out of YouTube. The yt-dlp wiki explains how to export cookies that
+> YouTube will not rotate.
+
+### Google sign-in (the alternative)
+
+A Google OAuth client is the other way in, and it is still supported: press
+**Continue with Google** on the Playlists page and pick an account. It needs a
+project in the [Google Cloud console](https://console.cloud.google.com/):
+
+1. Create a project and enable the **YouTube Data API v3**.
 2. Configure the OAuth consent screen (add your own email as a test user).
 3. Create an **OAuth client ID** of type *Web application*.
-4. Add the redirect URI `http://localhost:8080/api/auth/google/callback`
-   (or `https://your-host/api/auth/google/callback` if you expose the app publicly).
+4. Add the redirect URI — the **exact** address your app answers on, for example
+   `https://ytdl.example.com/api/auth/google/callback`. Google matches the scheme,
+   the host and the trailing slash exactly, and only `http://localhost` may skip
+   HTTPS.
 5. Pass the credentials to the container:
 
    ```yaml
    environment:
      GOOGLE_CLIENT_ID: "xxxx.apps.googleusercontent.com"
      GOOGLE_CLIENT_SECRET: "xxxx"
-     GOOGLE_REDIRECT_URL: "http://localhost:8080/api/auth/google/callback"
    ```
+
+Leave `GOOGLE_REDIRECT_URL` unset and the server takes the address from the request,
+which is what you want behind a proxy or on a cloud platform. Set it explicitly when
+the app answers on a different address than the browser used.
 
 Only the refresh token is stored, in `DATA_DIR/google.json` with `0600` permissions. The
 scope requested is `youtube.readonly` — the app can read playlists, it cannot modify

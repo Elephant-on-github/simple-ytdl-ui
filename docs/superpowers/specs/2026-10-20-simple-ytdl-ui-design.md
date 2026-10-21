@@ -248,6 +248,25 @@ The app can be locked with a password, so it is safe to expose to a network.
 * When the callback proves an account that is on the list, it opens a session and
   sets the cookie, so the browser is inside the app.
 
+### The YouTube session, and the Google sign-in
+
+The playlists of the account come from a YouTube session, not necessarily from Google.
+
+* `YTDLP_COOKIES` (a `cookies.txt`) or `YTDLP_COOKIES_FROM_BROWSER` (a browser
+  profile) hand a session to every yt-dlp call. With one, the server lists
+  `youtube.com/feed/playlists` through yt-dlp's own tab extractor, reaches private
+  playlists, and age-gated videos. **No Google Cloud project, no OAuth client, no API
+  quota.** This is the recommended way, and it is what yt-dlp itself does.
+* The Google OAuth sign-in stays available as the alternative. It needs a project in
+  the Cloud console, and the redirect URI must match the registered one exactly.
+* `GOOGLE_REDIRECT_URL` is optional: when it is empty the server derives the address
+  from the request (`X-Forwarded-Proto` and `X-Forwarded-Host`, falling back to the
+  host of the request), which is what a deployment behind a proxy or on a cloud
+  platform needs. The session cookie is marked secure when the request came in over
+  HTTPS.
+* `GET /api/auth/session` reports where the playlists come from: `cookies`, `google`
+  or nothing.
+
 ### Google OAuth
 * Authorization URL: `https://accounts.google.com/o/oauth2/auth` with
   `access_type=offline`, `prompt=consent`, scope `https://www.googleapis.com/auth/youtube.readonly`.

@@ -16,6 +16,9 @@ type Config struct {
 	FfmpegBin           string
 	GoogleClientID      string
 	GoogleClientSecret  string
+	// GoogleRedirectURL is the URI Google sends the browser back to. It is
+	// optional: when it is empty the server derives it from the request,
+	// which is what a deployment behind a proxy needs.
 	GoogleRedirectURL   string
 	ConcurrentDownloads int
 	DefaultMode         string // "video" | "music"
@@ -24,6 +27,13 @@ type Config struct {
 	// AuthAllowedEmails are the accounts that may sign in with Google
 	// instead of the password, comma separated.
 	AuthAllowedEmails string
+	// CookiesFile is a Netscape cookies.txt with a YouTube session. It lets
+	// the server reach private playlists and list your own library, with no
+	// Google Cloud project involved.
+	CookiesFile string
+	// CookiesFromBrowser asks yt-dlp to read the cookies out of a browser
+	// profile on this machine, e.g. "firefox" or "chrome".
+	CookiesFromBrowser string
 	// WebDir optionally points at a directory holding the built frontend.
 	// When empty the embedded copy of the SPA is served.
 	WebDir string
@@ -40,11 +50,13 @@ func Load() Config {
 		FfmpegBin:           envString("FFMPEG_BIN", "ffmpeg"),
 		GoogleClientID:      os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:  os.Getenv("GOOGLE_CLIENT_SECRET"),
-		GoogleRedirectURL:   envString("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/auth/google/callback"),
+		GoogleRedirectURL:   os.Getenv("GOOGLE_REDIRECT_URL"),
 		ConcurrentDownloads: envInt("CONCURRENT_DOWNLOADS", 2),
 		DefaultMode:         envString("DEFAULT_MODE", "video"),
 		AuthPassword:        os.Getenv("AUTH_PASSWORD"),
 		AuthAllowedEmails:   os.Getenv("AUTH_ALLOWED_EMAILS"),
+		CookiesFile:         os.Getenv("YTDLP_COOKIES"),
+		CookiesFromBrowser:  os.Getenv("YTDLP_COOKIES_FROM_BROWSER"),
 		WebDir:              os.Getenv("WEB_DIR"),
 	}
 }

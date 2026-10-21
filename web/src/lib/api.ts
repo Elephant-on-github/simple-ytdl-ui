@@ -25,6 +25,10 @@ export interface Session {
   authRequired: boolean
   /** Can a Google account sign in to the app itself? */
   googleCanAuth: boolean
+  /** Can the playlists be listed at all? */
+  playlistsAvailable: boolean
+  /** Where the playlists come from: "cookies", "google" or nothing. */
+  playlistSource: string
   /** Google: is this browser signed in to YouTube? */
   signedIn: boolean
   email: string

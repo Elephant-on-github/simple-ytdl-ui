@@ -139,13 +139,15 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 	})
 }
 
-// setSessionCookie opens a session for the browser.
-func (s *Server) setSessionCookie(w http.ResponseWriter, token string) {
+// setSessionCookie opens a session for the browser. Over HTTPS the cookie is
+// marked secure, so it never travels in the clear.
+func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   publicScheme(r) == "https",
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(auth.SessionTTL.Seconds()),
 	})
@@ -172,7 +174,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.setSessionCookie(w, token)
+	s.setSessionCookie(w, r, token)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "required": true})
 }
 
@@ -211,6 +213,49 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// publicScheme is the scheme the browser used to reach this server. Behind a
+// proxy the connection to us is plain HTTP, so the headers are what count.
+func publicScheme(r *http.Request) string {
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		return strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	if r.Header.Get("X-Forwarded-Ssl") == "on" {
+		return "https"
+	}
+	return "http"
+}
+
+// publicHost is the host the browser used to reach this server.
+func publicHost(r *http.Request) string {
+	if host := r.Header.Get("X-Forwarded-Host"); host != "" {
+		return strings.TrimSpace(strings.Split(host, ",")[0])
+	}
+	return r.Host
+}
+
+// redirectURL is the address Google sends the browser back to. The configured
+// one wins; without it the address is taken from the request, so the app works
+// behind a proxy or on a cloud platform without any configuration.
+func (s *Server) redirectURL(r *http.Request) string {
+	if s.cfg.GoogleRedirectURL != "" {
+		return s.cfg.GoogleRedirectURL
+	}
+	return publicScheme(r) + "://" + publicHost(r) + "/api/auth/google/callback"
+}
+
+// oauthFor returns the OAuth configuration for this request, with the redirect
+// URI the request came in through.
+func (s *Server) oauthFor(r *http.Request) *youtube.OAuth {
+	o := s.oauthConfig()
+	if o.RedirectURL == "" {
+		o = o.WithRedirect(s.redirectURL(r))
+	}
+	return o
+}
+
 // handleAuthGoogle hands out the URL of Google's consent screen. The optional
 // "redirect" parameter says where the browser should end up afterwards, so the
 // sign-in can be started and finished inside the app.
@@ -222,7 +267,7 @@ func (s *Server) handleAuthGoogle(w http.ResponseWriter, r *http.Request) {
 	redirect := safeRedirect(r.URL.Query().Get("redirect"))
 	state := s.newState(redirect)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"url": s.oauthConfig().AuthURL(state),
+		"url": s.oauthFor(r).AuthURL(state),
 	})
 }
 
@@ -240,7 +285,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.oauthConfig().ExchangeToken(r.Context(), query.Get("code"))
+	token, err := s.oauthFor(r).ExchangeToken(r.Context(), query.Get("code"))
 	if err != nil {
 		log.Printf("google oauth exchange failed: %v", err)
 		http.Redirect(w, r, withQuery(redirect, "error", "exchange_failed"), http.StatusFound)
@@ -251,7 +296,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	email := s.oauthConfig().Email(r.Context(), token)
+	email := s.oauthFor(r).Email(r.Context(), token)
 	if err := s.store.SaveGoogleToken(token.RefreshToken, email); err != nil {
 		log.Printf("could not store the google token: %v", err)
 		http.Redirect(w, r, withQuery(redirect, "error", "storage_failed"), http.StatusFound)
@@ -261,7 +306,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 	// The account is on the allowed list: it may sign in to the app itself.
 	if s.cfg.AllowsEmail(email) {
-		s.setSessionCookie(w, s.auth.OpenSession())
+		s.setSessionCookie(w, r, s.auth.OpenSession())
 	}
 
 	http.Redirect(w, r, withQuery(redirect, "signedIn", "1"), http.StatusFound)
@@ -280,9 +325,24 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		"authRequired":  s.auth.Required(),
 		// Can a Google account sign in to the app itself?
 		"googleCanAuth": s.cfg.GoogleEnabled() && len(s.cfg.AllowedEmails()) > 0,
-		"signedIn":      ok,
-		"email":         email,
+		// Can the playlists be listed at all, and how?
+		"playlistsAvailable": s.manager.HasCookies() || ok,
+		"playlistSource":     s.playlistSource(ok),
+		"signedIn":           ok,
+		"email":              email,
 	})
+}
+
+// playlistSource says where the playlists come from: the YouTube session in
+// the cookies, or the YouTube Data API.
+func (s *Server) playlistSource(googleSignedIn bool) string {
+	if s.manager.HasCookies() {
+		return "cookies"
+	}
+	if googleSignedIn {
+		return "google"
+	}
+	return ""
 }
 
 // handleGoogleLogout forgets the stored Google token.
@@ -295,7 +355,31 @@ func (s *Server) handleGoogleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handlePlaylists lists the playlists of the account.
+//
+// A YouTube session in the cookies is enough — no Google Cloud project, no
+// OAuth client, no API quota. Without one the YouTube Data API is used, which
+// needs the Google sign-in.
 func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
+	if s.manager.HasCookies() {
+		lists, err := s.manager.Playlists(r.Context())
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		items := make([]map[string]any, 0, len(lists))
+		for _, p := range lists {
+			items = append(items, map[string]any{
+				"id":        p.ID,
+				"title":     p.Title,
+				"thumb":     p.Thumb,
+				"itemCount": 0,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		return
+	}
+
 	client, err := s.client(r.Context())
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "sign in with Google to see your playlists")

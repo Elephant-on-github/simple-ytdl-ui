@@ -18,6 +18,9 @@ export const useSessionStore = defineStore('session', () => {
   const authenticated = ref(true)
   /** Can a Google account sign in to the app itself? */
   const googleCanAuth = ref(false)
+  /** Can the playlists be listed, and where do they come from? */
+  const playlistsAvailable = ref(false)
+  const playlistSource = ref('')
 
   const status = computed(() => {
     if (!googleEnabled.value) return 'unconfigured'
@@ -48,6 +51,8 @@ export const useSessionStore = defineStore('session', () => {
       authRequired.value = !!session.authRequired
       authenticated.value = session.authenticated !== false
       googleCanAuth.value = !!session.googleCanAuth
+      playlistsAvailable.value = !!session.playlistsAvailable
+      playlistSource.value = session.playlistSource ?? ''
       error.value = ''
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Could not reach the server'
@@ -125,6 +130,8 @@ export const useSessionStore = defineStore('session', () => {
     authRequired,
     authenticated,
     googleCanAuth,
+    playlistsAvailable,
+    playlistSource,
     needsLogin,
     status,
     refresh,

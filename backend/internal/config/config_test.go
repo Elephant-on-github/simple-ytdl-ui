@@ -32,8 +32,10 @@ func TestLoadDefaults(t *testing.T) {
 	if c.FfmpegBin != "ffmpeg" {
 		t.Errorf("FfmpegBin = %q, want ffmpeg", c.FfmpegBin)
 	}
-	if c.GoogleRedirectURL != "http://localhost:8080/api/auth/google/callback" {
-		t.Errorf("GoogleRedirectURL = %q", c.GoogleRedirectURL)
+	// The redirect URL is empty by default: the server takes it from the
+	// request, which is what a deployment behind a proxy needs.
+	if c.GoogleRedirectURL != "" {
+		t.Errorf("GoogleRedirectURL = %q, want empty", c.GoogleRedirectURL)
 	}
 	if c.ConcurrentDownloads != 2 {
 		t.Errorf("ConcurrentDownloads = %d, want 2", c.ConcurrentDownloads)

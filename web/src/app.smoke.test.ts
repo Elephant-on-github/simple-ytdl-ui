@@ -39,7 +39,15 @@ const library: Item[] = [
 const responses: Record<string, unknown> = {
   '/api/health': { status: 'ok', version: '0.1.0' },
   '/api/config': { googleEnabled: true, defaultMode: 'video', concurrent: 2 },
-  '/api/auth/session': { authenticated: true, authRequired: false, signedIn: true, email: 'dev@example.com' },
+  '/api/auth/session': {
+    authenticated: true,
+    authRequired: false,
+    googleCanAuth: false,
+    playlistsAvailable: true,
+    playlistSource: 'google',
+    signedIn: true,
+    email: 'dev@example.com',
+  },
   '/api/jobs': { items: jobs },
   '/api/library': { items: library },
   '/api/playlists': { items: [{ id: 'PL1', title: 'Late Night Drive', itemCount: 42, thumb: '' }] },

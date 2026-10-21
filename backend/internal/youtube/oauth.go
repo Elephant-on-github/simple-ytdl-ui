@@ -36,6 +36,15 @@ type OAuth struct {
 	UserInfoURL string
 }
 
+// WithRedirect returns a copy of the configuration that sends the browser to
+// another redirect URI. The server uses it to answer with the public address
+// of the instance the request came in through.
+func (o *OAuth) WithRedirect(redirectURL string) *OAuth {
+	copied := *o
+	copied.RedirectURL = redirectURL
+	return &copied
+}
+
 // Config returns the oauth2 configuration for the Google endpoints.
 func (o *OAuth) Config() *oauth2.Config {
 	return &oauth2.Config{
