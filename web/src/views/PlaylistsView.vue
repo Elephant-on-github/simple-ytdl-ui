@@ -58,8 +58,9 @@ async function loadPlaylists(): Promise<void> {
     const payload = await api.playlists()
     playlists.value = payload.items ?? []
   } catch (err) {
-    error.value = 'Could not load your playlists.'
-    errorDetail.value = err instanceof Error ? err.message : String(err)
+    // The server explains what went wrong (no session, expired cookies, …).
+    error.value = err instanceof Error ? err.message : 'Could not load your playlists.'
+    errorDetail.value = ''
     playlists.value = []
   } finally {
     loading.value = false
