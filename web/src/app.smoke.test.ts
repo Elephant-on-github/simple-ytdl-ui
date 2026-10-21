@@ -39,15 +39,6 @@ const library: Item[] = [
 const responses: Record<string, unknown> = {
   '/api/health': { status: 'ok', version: '0.1.0' },
   '/api/config': { googleEnabled: true, defaultMode: 'video', concurrent: 2 },
-  '/api/auth/session': {
-    authenticated: true,
-    authRequired: false,
-    googleCanAuth: false,
-    playlistsAvailable: true,
-    playlistSource: 'google',
-    signedIn: true,
-    email: 'dev@example.com',
-  },
   '/api/jobs': { items: jobs },
   '/api/library': { items: library },
   '/api/playlists': { items: [{ id: 'PL1', title: 'Late Night Drive', itemCount: 42, thumb: '' }] },
@@ -57,11 +48,37 @@ const responses: Record<string, unknown> = {
   },
 }
 
+/** The session the server reports. Tests may change it. */
+let sessionResponse: Record<string, unknown> = {
+  authenticated: true,
+  authRequired: false,
+  googleCanAuth: false,
+  playlistsAvailable: true,
+  playlistSource: 'google',
+  signedIn: true,
+  email: 'dev@example.com',
+}
+
 function stubFetch(): void {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input).split('?')[0]
+      const method = init?.method ?? 'GET'
+
+      if (path === '/api/auth/session') {
+        return new Response(JSON.stringify(sessionResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (path === '/api/session/cookies' && method === 'POST') {
+        return new Response(JSON.stringify({ ok: true, playlists: 3 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
       const body = responses[path]
       if (body === undefined) {
         return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } })
@@ -178,11 +195,13 @@ describe('app smoke', () => {
   })
 
   it('shows the login screen with the google option when the server asks for one', async () => {
-    const before = responses['/api/auth/session']
-    responses['/api/auth/session'] = {
+    const before = { ...sessionResponse }
+    sessionResponse = {
       authenticated: false,
       authRequired: true,
       googleCanAuth: true,
+      playlistsAvailable: false,
+      playlistSource: '',
       signedIn: false,
       email: '',
     }
@@ -194,7 +213,46 @@ describe('app smoke', () => {
     // The app itself is not rendered while we are outside.
     expect(html).not.toContain('youtube.com/watch?v=')
 
-    responses['/api/auth/session'] = before
+    sessionResponse = before
+    app.unmount()
+  })
+
+  it('loads the playlists once a session is connected', async () => {
+    // No session yet: the panel shows.
+    const before = { ...sessionResponse }
+    sessionResponse = {
+      authenticated: true,
+      authRequired: false,
+      googleCanAuth: false,
+      playlistsAvailable: false,
+      playlistSource: '',
+      signedIn: false,
+      email: '',
+    }
+
+    const { app } = await mount('/playlists')
+
+    expect(document.body.innerHTML).toContain('Give the server your session')
+
+    // The server has a session from now on.
+    sessionResponse = { ...before, playlistsAvailable: true, playlistSource: 'cookies' }
+
+    const area = document.querySelector('.paste-area') as HTMLTextAreaElement
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype,
+      'value',
+    )?.set
+    setter?.call(area, '# Netscape HTTP Cookie File')
+    area.dispatchEvent(new Event('input', { bubbles: true }))
+    ;(document.querySelector('.paste button[type=submit]') as HTMLButtonElement).click()
+
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    await nextTick()
+
+    // The playlists are on the page now, without a reload.
+    expect(document.body.innerHTML).toContain('Late Night Drive')
+
+    sessionResponse = before
     app.unmount()
   })
 

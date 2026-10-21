@@ -272,9 +272,12 @@ func TestAPastedSessionIsStoredAndChecked(t *testing.T) {
 		t.Errorf("the stored session = %q", string(stored))
 	}
 
-	doc = decode(t, h.do(t, http.MethodGet, "/api/session/cookies", nil))
-	if doc["pasted"] != true {
-		t.Errorf("pasted = %v, want true", doc["pasted"])
+	doc = decode(t, h.do(t, http.MethodGet, "/api/auth/session", nil))
+	if doc["playlistsAvailable"] != true {
+		t.Errorf("playlistsAvailable = %v, want true", doc["playlistsAvailable"])
+	}
+	if doc["playlistSource"] != "cookies" {
+		t.Errorf("playlistSource = %v, want cookies", doc["playlistSource"])
 	}
 
 	// And it can be forgotten again.
@@ -297,6 +300,30 @@ func TestLooksLikeCookies(t *testing.T) {
 	good := []byte("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tabc\n")
 	if !looksLikeCookies(good) {
 		t.Error("a cookie file does not look like cookies")
+	}
+}
+
+func TestAFailedCheckKeepsThePastedSession(t *testing.T) {
+	// yt-dlp rewrites the cookie file it is given. A check that fails must not
+	// take the session the user pasted away with it.
+	h := newHarness(t, fakeytdlp.ModeFail)
+
+	paste := "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tabc\n"
+	rec := h.doRaw(t, http.MethodPost, "/api/session/cookies", "text/plain", paste)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	doc := decode(t, rec)
+	if doc["ok"] != false {
+		t.Errorf("ok = %v, want false: the fake cannot read any playlists", doc["ok"])
+	}
+
+	stored, err := os.ReadFile(filepath.Join(h.dir, "cookies.txt"))
+	if err != nil {
+		t.Fatalf("the session was not stored: %v", err)
+	}
+	if !strings.Contains(string(stored), "SID") {
+		t.Errorf("the pasted session was thrown away by the check: %q", string(stored))
 	}
 }
 

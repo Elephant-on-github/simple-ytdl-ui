@@ -75,6 +75,48 @@ func (r *Runner) cookieArgs() []string {
 	}
 }
 
+// browserCookieArgs are the arguments for a session that lives in a browser
+// profile. There is no file to copy in that case.
+func (r *Runner) browserCookieArgs() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.cookiesFile == "" && r.cookiesBrowser != "" {
+		return []string{"--cookies-from-browser", r.cookiesBrowser}
+	}
+	return nil
+}
+
+// sessionArgs returns the cookie arguments for one run and a cleanup function.
+//
+// yt-dlp rewrites the cookie file it is given. If every run used the same
+// file, two runs would write over each other and a run would rewrite the
+// session the user gave us — a check that fails would throw it away. So each
+// run works on its own copy and the original is only ever read.
+func (r *Runner) sessionArgs() ([]string, func(), error) {
+	r.mu.RLock()
+	file := r.cookiesFile
+	r.mu.RUnlock()
+
+	if file == "" {
+		return nil, func() {}, nil
+	}
+
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("could not read the youtube session: %w", err)
+	}
+	dir, err := os.MkdirTemp("", "ytdl-session-")
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("could not prepare the youtube session: %w", err)
+	}
+	path := filepath.Join(dir, "cookies.txt")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		os.RemoveAll(dir)
+		return nil, func() {}, fmt.Errorf("could not prepare the youtube session: %w", err)
+	}
+	return []string{"--cookies", path}, func() { os.RemoveAll(dir) }, nil
+}
+
 // resolveFfmpeg turns the configured ffmpeg into something yt-dlp can use.
 // yt-dlp expects a path, not a program name: a bare "ffmpeg" would be looked
 // up relative to the working directory. A name is therefore resolved against
@@ -122,7 +164,13 @@ func (r *Runner) Probe(ctx context.Context, rawURL string, flat bool) (Info, err
 		args = append(args, "--no-playlist")
 	}
 	args = append(args, "--no-warnings")
-	args = append(args, r.cookieArgs()...)
+	session, cleanup, err := r.sessionArgs()
+	if err != nil {
+		return info, err
+	}
+	defer cleanup()
+	args = append(args, session...)
+	args = append(args, r.browserCookieArgs()...)
 	args = append(args, rawURL)
 
 	cmd := prepareCmdPlatform(ctx, r.Bin, args...)
@@ -157,7 +205,18 @@ func (r *Runner) Download(ctx context.Context, mode Mode, outDir, rawURL string,
 	}
 
 	args := BuildDownloadArgs(mode, absDir, rawURL, r.FfmpegBin)
-	args = append(args[:len(args)-1], append(r.cookieArgs(), args[len(args)-1])...)
+	session, cleanup, err := r.sessionArgs()
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+
+	// The url is the last argument; the session goes in front of it.
+	url := args[len(args)-1]
+	rest := append([]string{}, args[:len(args)-1]...)
+	rest = append(rest, session...)
+	rest = append(rest, r.browserCookieArgs()...)
+	args = append(rest, url)
 	cmd := prepareCmdPlatform(ctx, r.Bin, args...)
 	cmd.WaitDelay = 2 * time.Second
 

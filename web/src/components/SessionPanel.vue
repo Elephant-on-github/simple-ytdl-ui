@@ -1,14 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { api } from '../lib/api'
+import { useSessionStore } from '../stores/session'
 
 const props = defineProps<{ serverUrl: string }>()
+
+const emit = defineEmits<{ (e: 'connected'): void }>()
+
+const session = useSessionStore()
 
 const cookies = ref('')
 const status = ref('')
 const error = ref('')
 const busy = ref(false)
-const configured = ref(false)
+
+/** Does the server have a session? The session store already knows. */
+const configured = computed(() => session.playlistsAvailable)
 
 /** The command that exports the session and sends it to this server. */
 const command = computed(() => {
@@ -24,15 +31,6 @@ const command = computed(() => {
   ].join('\n')
 })
 
-onMounted(async () => {
-  try {
-    const state = await api.cookies()
-    configured.value = state.configured
-  } catch {
-    /* the server is not reachable; the panel still works */
-  }
-})
-
 async function save(): Promise<void> {
   if (!cookies.value.trim()) {
     error.value = 'Paste the contents of the cookies.txt first.'
@@ -44,7 +42,6 @@ async function save(): Promise<void> {
   try {
     const result = await api.saveCookies(cookies.value)
     cookies.value = ''
-    configured.value = true
     if (result.ok) {
       status.value = `Connected. The server found ${result.playlists} playlist${
         result.playlists === 1 ? '' : 's'
@@ -52,6 +49,11 @@ async function save(): Promise<void> {
     } else {
       error.value = result.error || 'The server could not use that session.'
     }
+    // The server has a session now: the view needs to know, or it keeps
+    // showing the panel instead of the playlists. The view refreshes the
+    // session — telling it from here would be too late, because the refresh
+    // unmounts this panel and an unmounted component cannot speak.
+    emit('connected')
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Could not save the session.'
   } finally {
@@ -63,8 +65,9 @@ async function clear(): Promise<void> {
   busy.value = true
   try {
     await api.clearCookies()
-    configured.value = false
     status.value = 'The session was removed.'
+    error.value = ''
+    emit('connected')
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Could not remove the session.'
   } finally {

@@ -78,7 +78,6 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 	s.mux.HandleFunc("GET /api/auth/session", s.handleSession)
 	s.mux.HandleFunc("POST /api/auth/google/logout", s.handleGoogleLogout)
 	s.mux.HandleFunc("GET /api/playlists", s.handlePlaylists)
-	s.mux.HandleFunc("GET /api/session/cookies", s.handleCookies)
 	s.mux.HandleFunc("POST /api/session/cookies", s.handleSaveCookies)
 	s.mux.HandleFunc("DELETE /api/session/cookies", s.handleClearCookies)
 	s.mux.HandleFunc("GET /api/playlists/{id}/items", s.handlePlaylistItems)
@@ -359,14 +358,6 @@ func (s *Server) handleGoogleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// handleCookies hands out the state of the YouTube session.
-func (s *Server) handleCookies(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"configured": s.manager.HasCookies(),
-		"pasted":     s.store.HasCookies(),
-	})
-}
-
 // handleSaveCookies takes a YouTube session that was pasted into the app and
 // checks it right away: a session that cannot list the playlists is worthless,
 // and the user should know before they leave.
@@ -390,17 +381,26 @@ func (s *Server) handleSaveCookies(w http.ResponseWriter, r *http.Request) {
 	s.manager.SetCookies(s.store.CookiesPath())
 
 	// Check it right away: a session that cannot list the playlists is
-	// worthless, and the user should know now.
-	lists, err := s.manager.Playlists(r.Context())
+	// worthless, and the user should know now. The check gets a deadline of
+	// its own — yt-dlp retries three times, which is longer than a proxy
+	// waits for an answer.
+	ctx, cancel := context.WithTimeout(r.Context(), sessionCheckTimeout)
+	defer cancel()
+
+	lists, err := s.manager.Playlists(ctx)
 	if err != nil {
+		message := err.Error()
+		if ctx.Err() != nil {
+			message = "the session was stored, but the check did not finish in time — try again in a moment"
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":    false,
-			"error": err.Error(),
+			"error": message,
 		})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":       true,
+		"ok":        true,
 		"playlists": len(lists),
 	})
 }
@@ -703,6 +703,10 @@ func (s *Server) forgetClient() {
 
 // defaultRedirect is where the browser lands when nothing else is known.
 const defaultRedirect = "/playlists"
+
+// sessionCheckTimeout is how long the check of a pasted session may take.
+// yt-dlp retries three times, which is longer than a proxy waits.
+const sessionCheckTimeout = 20 * time.Second
 
 // newState issues a one time state value that remembers the page the sign-in
 // was started from.

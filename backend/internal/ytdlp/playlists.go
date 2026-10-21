@@ -37,7 +37,13 @@ func (r *Runner) Playlists(ctx context.Context) ([]Playlist, error) {
 		"--no-warnings",
 		"--extractor-args", "youtubetab:skip=authcheck",
 	}
-	args = append(args, r.cookieArgs()...)
+	session, cleanup, err := r.sessionArgs()
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	args = append(args, session...)
+	args = append(args, r.browserCookieArgs()...)
 	args = append(args, LibraryURL)
 
 	cmd := exec.CommandContext(ctx, r.Bin, args...)

@@ -83,6 +83,9 @@ press **Connect** — the server stores the session, checks it against YouTube r
 away, and tells you how many playlists it found. Nothing to mount, nothing to
 restart, and it works from a browser on another machine.
 
+The check runs on a copy of your session, so a session that does not work is never
+thrown away — you can paste a better one straight away.
+
 The panel also shows the exact command for your setup, with this server's address
 already filled in, so you can let the export do the uploading:
 
@@ -370,7 +373,6 @@ rows marked *public* answer without one.
 | `POST` | `/api/auth/google/logout` | forget the stored Google token |
 | `GET` | `/api/config` | feature flags and defaults |
 | `GET` | `/api/playlists` | your playlists — from the session or from Google |
-| `GET` | `/api/session/cookies` | whether the server has a YouTube session |
 | `POST` | `/api/session/cookies` | paste a session; it is stored and checked |
 | `DELETE` | `/api/session/cookies` | forget the session |
 | `GET` | `/api/playlists/{id}/items` | the tracks of a playlist |

@@ -168,8 +168,6 @@ export const api = {
 
   playlists: () => request<{ items: Playlist[] }>('/api/playlists'),
 
-  cookies: () => request<{ configured: boolean; pasted: boolean }>('/api/session/cookies'),
-
   saveCookies: (cookies: string) =>
     request<{ ok: boolean; playlists?: number; error?: string }>('/api/session/cookies', {
       method: 'POST',

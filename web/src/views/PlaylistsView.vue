@@ -22,6 +22,7 @@ const playlists = ref<Playlist[]>([])
 const loading = ref(false)
 const error = ref('')
 const errorDetail = ref('')
+const loadError = ref('')
 const notice = ref('')
 const signingIn = ref(false)
 const syncing = ref<string | null>(null)
@@ -58,12 +59,13 @@ async function loadPlaylists(): Promise<void> {
   loading.value = true
   error.value = ''
   errorDetail.value = ''
+  loadError.value = ''
   try {
     const payload = await api.playlists()
     playlists.value = payload.items ?? []
   } catch (err) {
     // The server explains what went wrong (no session, expired cookies, …).
-    error.value = err instanceof Error ? err.message : 'Could not load your playlists.'
+    loadError.value = err instanceof Error ? err.message : 'Could not load your playlists.'
     errorDetail.value = ''
     playlists.value = []
   } finally {
@@ -94,6 +96,16 @@ async function sync(playlist: Playlist): Promise<void> {
     syncing.value = null
   }
 }
+
+/** A session arrived (or was removed): load the playlists again. */
+async function onConnected(): Promise<void> {
+  await session.refresh()
+  if (session.playlistsAvailable) {
+    await loadPlaylists()
+  } else {
+    loadError.value = ''
+  }
+}
 </script>
 
 <template>
@@ -117,40 +129,8 @@ async function sync(playlist: Playlist): Promise<void> {
       {{ error }}
     </p>
 
-    <!-- No YouTube session yet: offer the two ways to get one. -->
-    <template v-if="session.loaded && !session.playlistsAvailable">
-      <SessionPanel :server-url="serverURL" />
-      <p class="t-meta faint">
-        Would rather sign in with a button? A Google OAuth client works too — see the
-        README. It needs a project in the Google Cloud console, the session above does
-        not.
-      </p>
-    </template>
-
-    <!-- Google is configured but the visitor has not signed in. -->
-    <section
-      v-else-if="session.loaded && session.googleEnabled && !session.signedIn"
-      class="card frame"
-    >
-      <span class="tick tick--tl" aria-hidden="true" />
-      <span class="tick tick--tr" aria-hidden="true" />
-      <span class="tick tick--bl" aria-hidden="true" />
-      <span class="tick tick--br" aria-hidden="true" />
-
-      <p class="t-label">Step one</p>
-      <h2 class="t-italic card-title">Sign in to see your playlists</h2>
-      <p class="t-serif-body card-copy">
-        Google only ever grants read access to your playlists. Downloads still happen on
-        your own server.
-      </p>
-      <button type="button" class="step card-cta" :disabled="signingIn" @click="signIn">
-        {{ signingIn ? 'Redirecting' : 'Continue with Google' }}
-        <span aria-hidden="true">→</span>
-      </button>
-    </section>
-
     <!-- The playlists are there — from the session in the cookies or from Google. -->
-    <template v-else-if="session.playlistsAvailable">
+    <template v-if="session.playlistsAvailable && !loadError">
       <div class="toolbar">
         <p class="t-meta">
           Syncing queues every track as
@@ -171,6 +151,40 @@ async function sync(playlist: Playlist): Promise<void> {
         :busy="syncing"
         @sync="sync"
       />
+    </template>
+
+    <!-- The session does not work: show the reason and how to fix it. -->
+    <template v-else-if="session.loaded">
+      <p v-if="loadError" class="notice notice--error t-meta">{{ loadError }}</p>
+
+      <!-- Google is configured but the visitor has not signed in. -->
+      <section
+        v-if="session.googleEnabled && !session.signedIn"
+        class="card frame"
+      >
+        <span class="tick tick--tl" aria-hidden="true" />
+        <span class="tick tick--tr" aria-hidden="true" />
+        <span class="tick tick--bl" aria-hidden="true" />
+        <span class="tick tick--br" aria-hidden="true" />
+
+        <p class="t-label">Step one</p>
+        <h2 class="t-italic card-title">Sign in to see your playlists</h2>
+        <p class="t-serif-body card-copy">
+          Google only ever grants read access to your playlists. Downloads still happen on
+          your own server.
+        </p>
+        <button type="button" class="step card-cta" :disabled="signingIn" @click="signIn">
+          {{ signingIn ? 'Redirecting' : 'Continue with Google' }}
+          <span aria-hidden="true">→</span>
+        </button>
+      </section>
+
+      <SessionPanel :server-url="serverURL" @connected="onConnected" />
+      <p class="t-meta faint">
+        Would rather sign in with a button? A Google OAuth client works too — see the
+        README. It needs a project in the Google Cloud console, the session above does
+        not.
+      </p>
     </template>
 
     <p v-else class="t-meta faint">Checking the server…</p>

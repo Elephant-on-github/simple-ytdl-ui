@@ -259,6 +259,11 @@ The playlists of the account come from a YouTube session, not necessarily from G
   quota.** This is the recommended way, and it is what yt-dlp itself does.
 * The Google OAuth sign-in stays available as the alternative. It needs a project in
   the Cloud console, and the redirect URI must match the registered one exactly.
+* The session can also be pasted into the app (`POST /api/session/cookies`). The
+  server stores it in the data directory and checks it right away, with a deadline of
+  its own. The check runs on a *copy*: yt-dlp rewrites the cookie file it is given,
+  so checking the stored file directly would throw a session away when the check
+  fails — and two downloads would write over each other.
 * `GOOGLE_REDIRECT_URL` is optional: when it is empty the server derives the address
   from the request (`X-Forwarded-Proto` and `X-Forwarded-Host`, falling back to the
   host of the request), which is what a deployment behind a proxy or on a cloud

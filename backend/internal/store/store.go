@@ -285,7 +285,14 @@ func (s *Store) HasCookies() bool {
 func (s *Store) SaveCookies(data []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return os.WriteFile(s.CookiesPath(), data, 0o600)
+
+	path := s.CookiesPath()
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	// WriteFile only applies the mode when it creates the file, so an older
+	// or a hand-copied file keeps its own.
+	return os.Chmod(path, 0o600)
 }
 
 // SaveCookiesFrom copies a cookie file into the store.
