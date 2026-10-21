@@ -3,6 +3,8 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterView } from 'vue-router'
 import TopBar from './components/TopBar.vue'
 import PlayerBar from './components/PlayerBar.vue'
+import LoginPanel from './components/LoginPanel.vue'
+import { setUnauthorizedHandler } from './lib/api'
 import { usePlayerStore } from './stores/player'
 import { useSessionStore } from './stores/session'
 import { useModeStore } from './stores/mode'
@@ -29,10 +31,15 @@ onMounted(() => {
   void session.refresh()
   tick()
   timer = setInterval(tick, 1000)
+  // A refused request means the session is gone: show the login again.
+  setUnauthorizedHandler(() => {
+    session.authenticated = false
+  })
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  setUnauthorizedHandler(null)
 })
 </script>
 
@@ -44,7 +51,8 @@ onUnmounted(() => {
     <TopBar class="shell-top" />
 
     <main class="shell-stage">
-      <RouterView v-slot="{ Component }">
+      <LoginPanel v-if="session.needsLogin" />
+      <RouterView v-else v-slot="{ Component }">
         <Transition name="view" mode="out-in">
           <component :is="Component" />
         </Transition>
@@ -55,6 +63,14 @@ onUnmounted(() => {
       <span class="t-meta">{{ clock }}</span>
       <span class="t-meta">{{ mode.mode === 'music' ? 'MP3' : 'VIDEO' }} MODE</span>
       <span class="t-meta">{{ session.version ? `BUILD ${session.version}` : 'SELF-HOSTED' }}</span>
+      <button
+        v-if="session.authRequired && session.authenticated"
+        type="button"
+        class="foot-out t-nav"
+        @click="session.logout()"
+      >
+        Sign out
+      </button>
     </footer>
 
     <PlayerBar />
@@ -91,6 +107,21 @@ onUnmounted(() => {
 
 .shell-foot .t-meta:nth-child(2) {
   color: var(--accent);
+}
+
+/* The way out of a locked server. */
+.foot-out {
+  color: var(--ink-faint);
+  padding-bottom: 2px;
+  border-bottom: 1px solid transparent;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.foot-out:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 /* Leave room for the docked player only while it is on screen. */

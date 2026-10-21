@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Elephant-on-github/simple-ytdl-ui/backend/internal/auth"
 	"github.com/Elephant-on-github/simple-ytdl-ui/backend/internal/config"
 	"github.com/Elephant-on-github/simple-ytdl-ui/backend/internal/download"
 	"github.com/Elephant-on-github/simple-ytdl-ui/backend/internal/fakeytdlp"
@@ -79,6 +80,124 @@ func decode(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 		t.Fatalf("response is not JSON (%q): %v", rec.Body.String(), err)
 	}
 	return doc
+}
+
+// newGuardedHarness returns a harness whose server needs a password.
+func newGuardedHarness(t *testing.T, password string) *harness {
+	t.Helper()
+	h := newHarness(t, fakeytdlp.ModeOK)
+	h.server.cfg.AuthPassword = password
+	h.server.auth = auth.New(password)
+	return h
+}
+
+// doWithCookie is like do, but sends the given cookies.
+func (h *harness) doWithCookie(t *testing.T, method, target string, body any, cookies []*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var reader *strings.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal body: %v", err)
+		}
+		reader = strings.NewReader(string(raw))
+	} else {
+		reader = strings.NewReader("")
+	}
+
+	req := httptest.NewRequest(method, target, reader)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	rec := httptest.NewRecorder()
+	h.server.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func TestWithoutAPasswordTheAppIsOpen(t *testing.T) {
+	h := newHarness(t, fakeytdlp.ModeOK)
+
+	rec := h.do(t, http.MethodGet, "/api/library", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	doc := decode(t, h.do(t, http.MethodGet, "/api/auth/session", nil))
+	if doc["authRequired"] != false {
+		t.Errorf("authRequired = %v, want false", doc["authRequired"])
+	}
+	if doc["authenticated"] != true {
+		t.Errorf("authenticated = %v, want true", doc["authenticated"])
+	}
+}
+
+func TestAPasswordGuardsTheApp(t *testing.T) {
+	h := newGuardedHarness(t, "hunter2")
+
+	// Without a session everything but the login is closed.
+	rec := h.do(t, http.MethodGet, "/api/library", nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+
+	// The wrong password is refused.
+	rec = h.do(t, http.MethodPost, "/api/auth/login", map[string]string{"password": "wrong"})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+
+	// The right password opens a session.
+	rec = h.do(t, http.MethodPost, "/api/auth/login", map[string]string{"password": "hunter2"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	var cookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessionCookie {
+			cookie = c
+		}
+	}
+	if cookie == nil {
+		t.Fatal("the login did not set a session cookie")
+	}
+	if !cookie.HttpOnly {
+		t.Error("the session cookie is not HttpOnly")
+	}
+
+	// With the cookie the app opens up.
+	rec = h.doWithCookie(t, http.MethodGet, "/api/library", nil, []*http.Cookie{cookie})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	doc := decode(t, h.doWithCookie(t, http.MethodGet, "/api/auth/session", nil, []*http.Cookie{cookie}))
+	if doc["authenticated"] != true {
+		t.Errorf("authenticated = %v, want true", doc["authenticated"])
+	}
+	if doc["authRequired"] != true {
+		t.Errorf("authRequired = %v, want true", doc["authRequired"])
+	}
+
+	// After the logout the cookie is worthless.
+	rec = h.doWithCookie(t, http.MethodPost, "/api/auth/logout", nil, []*http.Cookie{cookie})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	rec = h.doWithCookie(t, http.MethodGet, "/api/library", nil, []*http.Cookie{cookie})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d after the logout, want 401", rec.Code)
+	}
+}
+
+func TestTheHealthCheckWorksWithoutASession(t *testing.T) {
+	// The container health check has no cookie.
+	h := newGuardedHarness(t, "hunter2")
+
+	rec := h.do(t, http.MethodGet, "/api/health", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
 }
 
 func TestHealth(t *testing.T) {
@@ -385,7 +504,7 @@ func TestSessionAndLogout(t *testing.T) {
 		t.Errorf("email = %v", doc["email"])
 	}
 
-	rec = h.do(t, http.MethodPost, "/api/auth/logout", nil)
+	rec = h.do(t, http.MethodPost, "/api/auth/google/logout", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}

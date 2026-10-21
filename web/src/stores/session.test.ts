@@ -39,4 +39,54 @@ describe('session store', () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe('/api/auth/google')
   })
+
+  it('knows when the server wants a password', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ authenticated: false, authRequired: true, signedIn: false, email: '' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const store = useSessionStore()
+    await store.refresh()
+
+    expect(store.authRequired).toBe(true)
+    expect(store.authenticated).toBe(false)
+    expect(store.needsLogin).toBe(true)
+  })
+
+  it('signs in with the password', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, required: true }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const store = useSessionStore()
+    store.authRequired = true
+    store.authenticated = false
+    await store.login('hunter2')
+
+    expect(store.authenticated).toBe(true)
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/auth/login')
+    expect(fetchMock.mock.calls[0][1]?.body).toContain('hunter2')
+  })
+
+  it('reports a refused password', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        json: async () => ({ error: 'that password is not right' }),
+      }),
+    )
+
+    const store = useSessionStore()
+    await expect(store.login('wrong')).rejects.toThrow()
+    expect(store.authenticated).toBe(false)
+  })
 })

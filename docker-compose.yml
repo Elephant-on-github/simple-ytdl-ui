@@ -24,6 +24,8 @@ services:
       CONCURRENT_DOWNLOADS: "2"
       DEFAULT_MODE: video
       TZ: UTC
+      # --- optional: lock the app behind a password ---
+      # AUTH_PASSWORD: "choose-something-long"
       # --- optional Google sign-in (leave unset to run without it) ---
       # GOOGLE_CLIENT_ID: "xxxx.apps.googleusercontent.com"
       # GOOGLE_CLIENT_SECRET: "xxxx"

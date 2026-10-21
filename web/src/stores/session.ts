@@ -13,10 +13,17 @@ export const useSessionStore = defineStore('session', () => {
   const loaded = ref(false)
   const error = ref('')
 
+  /** The app itself: is a password set, and is this browser signed in? */
+  const authRequired = ref(false)
+  const authenticated = ref(true)
+
   const status = computed(() => {
     if (!googleEnabled.value) return 'unconfigured'
     return signedIn.value ? 'signed-in' : 'signed-out'
   })
+
+  /** True when the shell has to show the login screen. */
+  const needsLogin = computed(() => authRequired.value && !authenticated.value)
 
   let inflight: Promise<void> | null = null
 
@@ -36,6 +43,8 @@ export const useSessionStore = defineStore('session', () => {
       const session = await api.session()
       signedIn.value = !!session.signedIn
       email.value = session.email ?? ''
+      authRequired.value = !!session.authRequired
+      authenticated.value = session.authenticated !== false
       error.value = ''
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Could not reach the server'
@@ -69,12 +78,35 @@ export const useSessionStore = defineStore('session', () => {
     window.location.href = url
   }
 
+  /** Sign out of Google, keeping the app session. */
   async function signOut(): Promise<void> {
     try {
-      await api.logout()
+      await api.googleLogout()
     } finally {
       signedIn.value = false
       email.value = ''
+    }
+  }
+
+  /** Sign in to the app itself. */
+  async function login(password: string): Promise<void> {
+    try {
+      await api.login(password)
+      authenticated.value = true
+      error.value = ''
+    } catch (err) {
+      // A refused password means we are still outside.
+      authenticated.value = false
+      throw err
+    }
+  }
+
+  /** Sign out of the app itself. */
+  async function logout(): Promise<void> {
+    try {
+      await api.logout()
+    } finally {
+      authenticated.value = false
     }
   }
 
@@ -87,10 +119,15 @@ export const useSessionStore = defineStore('session', () => {
     version,
     loaded,
     error,
+    authRequired,
+    authenticated,
+    needsLogin,
     status,
     refresh,
     authUrl,
     signIn,
     signOut,
+    login,
+    logout,
   }
 })

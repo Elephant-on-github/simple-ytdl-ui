@@ -18,6 +18,8 @@ type Config struct {
 	GoogleRedirectURL   string
 	ConcurrentDownloads int
 	DefaultMode         string // "video" | "music"
+	// AuthPassword guards the app. When it is empty the app is open.
+	AuthPassword string
 	// WebDir optionally points at a directory holding the built frontend.
 	// When empty the embedded copy of the SPA is served.
 	WebDir string
@@ -37,6 +39,7 @@ func Load() Config {
 		GoogleRedirectURL:   envString("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/auth/google/callback"),
 		ConcurrentDownloads: envInt("CONCURRENT_DOWNLOADS", 2),
 		DefaultMode:         envString("DEFAULT_MODE", "video"),
+		AuthPassword:        os.Getenv("AUTH_PASSWORD"),
 		WebDir:              os.Getenv("WEB_DIR"),
 	}
 }

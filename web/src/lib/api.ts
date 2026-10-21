@@ -19,6 +19,11 @@ export interface AppConfig {
 }
 
 export interface Session {
+  /** The app itself: is this browser allowed in? */
+  authenticated: boolean
+  /** Is a password set on the server? */
+  authRequired: boolean
+  /** Google: is this browser signed in to YouTube? */
   signedIn: boolean
   email: string
 }
@@ -87,6 +92,16 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The app tells the client when a request was refused, so the shell can show
+ * the login screen instead of an empty page.
+ */
+let onUnauthorized: (() => void) | null = null
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
@@ -99,6 +114,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     })
   } catch (err) {
     throw new ApiError(0, err instanceof Error ? err.message : 'Network request failed')
+  }
+
+  if (res.status === 401) {
+    onUnauthorized?.()
   }
 
   if (!res.ok) {
@@ -129,7 +148,15 @@ export const api = {
 
   session: () => request<Session>('/api/auth/session'),
 
+  login: (password: string) =>
+    request<{ ok: boolean; required: boolean }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
+
   logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+
+  googleLogout: () => request<{ ok: boolean }>('/api/auth/google/logout', { method: 'POST' }),
 
   playlists: () => request<{ items: Playlist[] }>('/api/playlists'),
 

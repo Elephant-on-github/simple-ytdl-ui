@@ -57,26 +57,15 @@ docker compose -f docker-compose.build.yml up -d --build
 | `sha-abc1234` | the build of a single commit |
 
 The image is built and published by `.github/workflows/docker.yml` on every push to
-`main`, for `linux/amd64` and `linux/arm64`.
-
-A container package is **private by default**, and only the owner of the account can
-change that — the workflow's token is not allowed to. Do it once, by hand:
-
-1. Open the [package settings](https://github.com/users/Elephant-on-github/packages/container/package/simple-ytdl-ui/settings).
-2. Set **Change visibility** to **Public** and save.
-
-After that anybody can pull the image without an account:
+`main`, for `linux/amd64` and `linux/arm64`. It is public, so anybody can pull it
+without an account:
 
 ```bash
 docker pull ghcr.io/elephant-on-github/simple-ytdl-ui:latest
 ```
 
-If you would rather do it from the command line, give a personal access token the
-`write:packages` scope (`gh auth refresh -s write:packages`) and run:
-
-```bash
-gh api -X PATCH /user/packages/container/simple-ytdl-ui -f visibility=public
-```
+> Forking this? GitHub makes a new package private, and only the owner of the account
+> can change that. Set your package to **Public** once, in its settings.
 
 ---
 
@@ -94,10 +83,25 @@ sensible defaults.
 | `FFMPEG_BIN` | `ffmpeg` | Path to `ffmpeg` (needed for MP3 extraction and thumbnail embedding). |
 | `CONCURRENT_DOWNLOADS` | `2` | How many downloads run at the same time. |
 | `DEFAULT_MODE` | `video` | Initial mode of the Video/MP3 toggle: `video` or `music`. |
+| `AUTH_PASSWORD` | – | Password for the app. Unset ⇒ the app is open. Set it ⇒ a login screen guards everything. |
 | `GOOGLE_CLIENT_ID` | – | Google OAuth client id. Unset ⇒ Google features are off. |
 | `GOOGLE_CLIENT_SECRET` | – | Google OAuth client secret. Unset ⇒ Google features are off. |
 | `GOOGLE_REDIRECT_URL` | `http://localhost:8080/api/auth/google/callback` | Must match the redirect URI registered in Google Cloud. |
 | `WEB_DIR` | – | Serve the frontend from a directory instead of the embedded build (development). |
+
+### Locking the app
+
+Set `AUTH_PASSWORD` and the app asks for a password before it shows anything. The
+login happens in the browser, the session lives in an `HttpOnly` cookie, and a
+restart of the container signs everybody out again.
+
+```yaml
+environment:
+  AUTH_PASSWORD: "choose-something-long"
+```
+
+Nothing else changes: the Google sign-in for playlists is a separate thing and stays
+optional.
 
 ### Putting the library on its own disk
 

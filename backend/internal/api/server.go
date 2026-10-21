@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Elephant-on-github/simple-ytdl-ui/backend/internal/auth"
 	"github.com/Elephant-on-github/simple-ytdl-ui/backend/internal/config"
 	"github.com/Elephant-on-github/simple-ytdl-ui/backend/internal/download"
 	"github.com/Elephant-on-github/simple-ytdl-ui/backend/internal/store"
@@ -37,6 +38,7 @@ type Server struct {
 	store   *store.Store
 	manager *download.Manager
 	yt      *youtube.Client
+	auth    *auth.Manager
 
 	mu       sync.Mutex
 	oauth    *youtube.OAuth
@@ -60,6 +62,7 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 		store:   st,
 		manager: mgr,
 		yt:      yt,
+		auth:    auth.New(cfg.AuthPassword),
 		states:  map[string]authState{},
 		oauth: &youtube.OAuth{
 			ClientID:     cfg.GoogleClientID,
@@ -74,7 +77,7 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 	s.mux.HandleFunc("GET /api/auth/google", s.handleAuthGoogle)
 	s.mux.HandleFunc("GET /api/auth/google/callback", s.handleAuthCallback)
 	s.mux.HandleFunc("GET /api/auth/session", s.handleSession)
-	s.mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
+	s.mux.HandleFunc("POST /api/auth/google/logout", s.handleGoogleLogout)
 	s.mux.HandleFunc("GET /api/playlists", s.handlePlaylists)
 	s.mux.HandleFunc("GET /api/playlists/{id}/items", s.handlePlaylistItems)
 	s.mux.HandleFunc("POST /api/downloads", s.handleDownloads)
@@ -101,9 +104,86 @@ func (s *Server) SetOAuth(o *youtube.OAuth) {
 // /api and the single page application everywhere else.
 func (s *Server) Handler() http.Handler {
 	root := http.NewServeMux()
-	root.Handle("/api/", s.mux)
+
+	// The routes that work without a session: the health check the container
+	// uses, and the login itself.
+	root.Handle("GET /api/health", http.HandlerFunc(s.handleHealth))
+	root.Handle("GET /api/auth/session", http.HandlerFunc(s.handleSession))
+	root.Handle("POST /api/auth/login", http.HandlerFunc(s.handleLogin))
+	root.Handle("POST /api/auth/logout", http.HandlerFunc(s.handleLogout))
+
+	// Everything else needs a session when a password is set.
+	root.Handle("/api/", s.requireAuth(s.mux))
 	root.Handle("/", StaticHandler(s.cfg.WebDir))
 	return root
+}
+
+// sessionCookie is the name of the cookie that holds the session token.
+const sessionCookie = "sid"
+
+// requireAuth guards the handlers behind a session. Without a password every
+// request goes straight through.
+func (s *Server) requireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.auth.Required() {
+			next.ServeHTTP(w, r)
+			return
+		}
+		cookie, err := r.Cookie(sessionCookie)
+		if err != nil || !s.auth.Valid(cookie.Value) {
+			writeError(w, http.StatusUnauthorized, "sign in to use this server")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// handleLogin checks the password and opens a session.
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if !s.auth.Required() {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "required": false})
+		return
+	}
+
+	var body struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "the request body must be JSON")
+		return
+	}
+
+	token, ok := s.auth.Login(body.Password)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "that password is not right")
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(auth.SessionTTL.Seconds()),
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "required": true})
+}
+
+// handleLogout closes the session of the browser.
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(sessionCookie); err == nil {
+		s.auth.Logout(cookie.Value)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -176,15 +256,24 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, withQuery(redirect, "signedIn", "1"), http.StatusFound)
 }
 
+// handleSession reports who is signed in: the app itself and Google.
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	_, email, ok := s.store.GoogleToken()
+	authenticated := true
+	if s.auth.Required() {
+		cookie, err := r.Cookie(sessionCookie)
+		authenticated = err == nil && s.auth.Valid(cookie.Value)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"signedIn": ok,
-		"email":    email,
+		"authenticated":  authenticated,
+		"authRequired":   s.auth.Required(),
+		"signedIn":       ok,
+		"email":          email,
 	})
 }
 
-func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+// handleGoogleLogout forgets the stored Google token.
+func (s *Server) handleGoogleLogout(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.ClearGoogleToken(); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

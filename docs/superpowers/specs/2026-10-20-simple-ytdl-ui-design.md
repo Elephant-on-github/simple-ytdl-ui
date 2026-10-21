@@ -222,8 +222,24 @@ added to the library. The file is never orphaned on disk.
   is written to it — a broken file is never silently overwritten.
 * The job list is pruned to the last 200 jobs, so `jobs.json` does not grow forever.
 
-### Google OAuth
+### The app login
 
+The app can be locked with a password, so it is safe to expose to a network.
+
+* `AUTH_PASSWORD` holds the password. Unset ⇒ the app is open, nothing changes.
+* `POST /api/auth/login` with `{"password": "…"}` checks it and answers with a
+  session cookie (`sid`, `HttpOnly`, `SameSite=Lax`, 30 days). The comparison is
+  constant time over a SHA-256 of the password.
+* The session lives in memory only: a restart of the server signs everybody out.
+* Every `/api/*` route needs the session when a password is set, except the health
+  check (the container needs it) and the login itself.
+* `GET /api/auth/session` reports `authenticated` and `authRequired` next to the
+  Google state, and the shell shows a login panel instead of the app while the
+  browser is outside.
+* `POST /api/auth/logout` closes the session. The Google sign-out is
+  `POST /api/auth/google/logout` and leaves the app session alone.
+
+### Google OAuth
 * Authorization URL: `https://accounts.google.com/o/oauth2/auth` with
   `access_type=offline`, `prompt=consent`, scope `https://www.googleapis.com/auth/youtube.readonly`.
 * The callback exchanges the code with `https://oauth2.googleapis.com/token` and stores
