@@ -126,8 +126,43 @@ func TestMediaDirFallsBackToTheDataDir(t *testing.T) {
 	}
 }
 
-func TestGoogleEnabled(t *testing.T) {
-	tests := []struct {
+func TestAllowedEmails(t *testing.T) {
+	t.Setenv("AUTH_ALLOWED_EMAILS", " Demo@example.com , other@example.com ")
+
+	cfg := Load()
+
+	emails := cfg.AllowedEmails()
+	if len(emails) != 2 {
+		t.Fatalf("AllowedEmails() = %v, want two addresses", emails)
+	}
+	if !cfg.AllowsEmail("demo@example.com") {
+		t.Error("AllowsEmail(demo@example.com) = false, want true")
+	}
+	if !cfg.AllowsEmail("DEMO@EXAMPLE.COM") {
+		t.Error("the comparison must not care about the case")
+	}
+	if cfg.AllowsEmail("stranger@example.com") {
+		t.Error("AllowsEmail(stranger@example.com) = true, want false")
+	}
+	if cfg.AllowsEmail("") {
+		t.Error("AllowsEmail(\"\") = true, want false")
+	}
+}
+
+func TestNoAllowedEmailsMeansNobody(t *testing.T) {
+	t.Setenv("AUTH_ALLOWED_EMAILS", "")
+
+	cfg := Load()
+
+	if len(cfg.AllowedEmails()) != 0 {
+		t.Errorf("AllowedEmails() = %v, want none", cfg.AllowedEmails())
+	}
+	if cfg.AllowsEmail("demo@example.com") {
+		t.Error("AllowsEmail(demo@example.com) = true, want false")
+	}
+}
+
+func TestGoogleEnabled(t *testing.T) {	tests := []struct {
 		name   string
 		id     string
 		secret string

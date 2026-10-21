@@ -238,6 +238,15 @@ The app can be locked with a password, so it is safe to expose to a network.
   browser is outside.
 * `POST /api/auth/logout` closes the session. The Google sign-out is
   `POST /api/auth/google/logout` and leaves the app session alone.
+* `AUTH_ALLOWED_EMAILS` are the accounts that may sign in to the app with Google
+  instead of the password, comma separated and case insensitive. When the list is not
+  empty, the login screen shows a "Continue with Google" button next to the password
+  field.
+* The Google sign-in and the Google callback are public routes: the callback is what
+  establishes the session, so it cannot ask for one. The one time state is the CSRF
+  protection.
+* When the callback proves an account that is on the list, it opens a session and
+  sets the cookie, so the browser is inside the app.
 
 ### Google OAuth
 * Authorization URL: `https://accounts.google.com/o/oauth2/auth` with

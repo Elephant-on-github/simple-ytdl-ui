@@ -84,6 +84,7 @@ sensible defaults.
 | `CONCURRENT_DOWNLOADS` | `2` | How many downloads run at the same time. |
 | `DEFAULT_MODE` | `video` | Initial mode of the Video/MP3 toggle: `video` or `music`. |
 | `AUTH_PASSWORD` | – | Password for the app. Unset ⇒ the app is open. Set it ⇒ a login screen guards everything. |
+| `AUTH_ALLOWED_EMAILS` | – | Accounts that may sign in with Google instead of the password, comma separated. |
 | `GOOGLE_CLIENT_ID` | – | Google OAuth client id. Unset ⇒ Google features are off. |
 | `GOOGLE_CLIENT_SECRET` | – | Google OAuth client secret. Unset ⇒ Google features are off. |
 | `GOOGLE_REDIRECT_URL` | `http://localhost:8080/api/auth/google/callback` | Must match the redirect URI registered in Google Cloud. |
@@ -102,6 +103,24 @@ environment:
 
 Nothing else changes: the Google sign-in for playlists is a separate thing and stays
 optional.
+
+### Signing in with your Google account
+
+`AUTH_ALLOWED_EMAILS` lets a Google account sign in to the app itself, without typing
+the password. The login screen then shows a **Continue with Google** button next to
+the password field.
+
+```yaml
+environment:
+  AUTH_PASSWORD: "choose-something-long"
+  AUTH_ALLOWED_EMAILS: "you@example.com"
+```
+
+The list is comma separated, and the comparison ignores case. Only the accounts on
+the list get in — anybody else who signs in with Google can still use the playlist
+sync, but not the app itself.
+
+To use it at all you need a Google OAuth client; see [Google sign-in](#google-sign-in-optional).
 
 ### Putting the library on its own disk
 
@@ -146,7 +165,8 @@ your account.
 Signing in happens entirely in the app: press **Continue with Google** on the
 Playlists page, pick an account, and you are back on the Playlists page — signed in,
 with your playlists loaded. If anything goes wrong, the app tells you what, in
-words.
+words. Add the address to `AUTH_ALLOWED_EMAILS` and the same button also signs you
+in to the app itself.
 
 ---
 

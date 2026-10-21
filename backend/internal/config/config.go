@@ -4,6 +4,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds every runtime knob of the server.
@@ -20,6 +21,9 @@ type Config struct {
 	DefaultMode         string // "video" | "music"
 	// AuthPassword guards the app. When it is empty the app is open.
 	AuthPassword string
+	// AuthAllowedEmails are the accounts that may sign in with Google
+	// instead of the password, comma separated.
+	AuthAllowedEmails string
 	// WebDir optionally points at a directory holding the built frontend.
 	// When empty the embedded copy of the SPA is served.
 	WebDir string
@@ -40,6 +44,7 @@ func Load() Config {
 		ConcurrentDownloads: envInt("CONCURRENT_DOWNLOADS", 2),
 		DefaultMode:         envString("DEFAULT_MODE", "video"),
 		AuthPassword:        os.Getenv("AUTH_PASSWORD"),
+		AuthAllowedEmails:   os.Getenv("AUTH_ALLOWED_EMAILS"),
 		WebDir:              os.Getenv("WEB_DIR"),
 	}
 }
@@ -52,6 +57,32 @@ func (c Config) MediaDir() string {
 		return c.LibraryDir
 	}
 	return c.DataDir
+}
+
+// AllowedEmails are the accounts that may sign in with Google.
+func (c Config) AllowedEmails() []string {
+	var out []string
+	for _, part := range strings.Split(c.AuthAllowedEmails, ",") {
+		email := strings.ToLower(strings.TrimSpace(part))
+		if email != "" {
+			out = append(out, email)
+		}
+	}
+	return out
+}
+
+// AllowsEmail reports whether the address may sign in with Google.
+func (c Config) AllowsEmail(email string) bool {
+	if email == "" {
+		return false
+	}
+	email = strings.ToLower(strings.TrimSpace(email))
+	for _, allowed := range c.AllowedEmails() {
+		if allowed == email {
+			return true
+		}
+	}
+	return false
 }
 
 // GoogleEnabled reports whether Google sign-in is configured. Both the client

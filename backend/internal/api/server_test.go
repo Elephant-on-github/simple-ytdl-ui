@@ -200,6 +200,91 @@ func TestTheHealthCheckWorksWithoutASession(t *testing.T) {
 	}
 }
 
+func TestAnAllowedGoogleAccountSignsInToTheApp(t *testing.T) {
+	h := newGuardedHarness(t, "hunter2")
+	h.server.cfg.GoogleClientID = "client-id"
+	h.server.cfg.GoogleClientSecret = "client-secret"
+	h.server.cfg.AuthAllowedEmails = "demo@example.com, other@example.com"
+
+	// The token and the user info endpoint both answer with the same server.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/userinfo" {
+			w.Write([]byte(`{"email":"demo@example.com"}`))
+			return
+		}
+		w.Write([]byte(`{"access_token":"access-token","refresh_token":"refresh-token","expires_in":3600,"token_type":"Bearer"}`))
+	}))
+	defer srv.Close()
+
+	h.server.SetOAuth(&youtube.OAuth{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		RedirectURL:  "http://localhost:8080/api/auth/google/callback",
+		TokenURL:     srv.URL,
+		UserInfoURL:  srv.URL + "/userinfo",
+	})
+
+	rec := h.do(t, http.MethodGet, "/api/auth/google", nil)
+	state := stateFromURL(decode(t, rec)["url"].(string))
+
+	rec = h.do(t, http.MethodGet, "/api/auth/google/callback?code=the-code&state="+state, nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+
+	var session *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessionCookie {
+			session = c
+		}
+	}
+	if session == nil {
+		t.Fatal("the google sign-in did not open a session")
+	}
+
+	// The session gets into the app without the password.
+	rec = h.doWithCookie(t, http.MethodGet, "/api/library", nil, []*http.Cookie{session})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+func TestAGoogleAccountThatIsNotAllowedGetsNoSession(t *testing.T) {
+	h := newGuardedHarness(t, "hunter2")
+	h.server.cfg.GoogleClientID = "client-id"
+	h.server.cfg.GoogleClientSecret = "client-secret"
+	h.server.cfg.AuthAllowedEmails = "demo@example.com"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/userinfo" {
+			w.Write([]byte(`{"email":"stranger@example.com"}`))
+			return
+		}
+		w.Write([]byte(`{"access_token":"access-token","refresh_token":"refresh-token","expires_in":3600,"token_type":"Bearer"}`))
+	}))
+	defer srv.Close()
+
+	h.server.SetOAuth(&youtube.OAuth{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		RedirectURL:  "http://localhost:8080/api/auth/google/callback",
+		TokenURL:     srv.URL,
+		UserInfoURL:  srv.URL + "/userinfo",
+	})
+
+	rec := h.do(t, http.MethodGet, "/api/auth/google", nil)
+	state := stateFromURL(decode(t, rec)["url"].(string))
+
+	rec = h.do(t, http.MethodGet, "/api/auth/google/callback?code=the-code&state="+state, nil)
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessionCookie && c.Value != "" {
+			t.Error("a google account that is not on the list got a session")
+		}
+	}
+}
+
 func TestHealth(t *testing.T) {
 	h := newHarness(t, fakeytdlp.ModeOK)
 

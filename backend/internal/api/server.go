@@ -74,8 +74,6 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 
 	s.mux.HandleFunc("GET /api/health", s.handleHealth)
 	s.mux.HandleFunc("GET /api/config", s.handleConfig)
-	s.mux.HandleFunc("GET /api/auth/google", s.handleAuthGoogle)
-	s.mux.HandleFunc("GET /api/auth/google/callback", s.handleAuthCallback)
 	s.mux.HandleFunc("GET /api/auth/session", s.handleSession)
 	s.mux.HandleFunc("POST /api/auth/google/logout", s.handleGoogleLogout)
 	s.mux.HandleFunc("GET /api/playlists", s.handlePlaylists)
@@ -106,11 +104,14 @@ func (s *Server) Handler() http.Handler {
 	root := http.NewServeMux()
 
 	// The routes that work without a session: the health check the container
-	// uses, and the login itself.
+	// uses, the login itself, and the Google sign-in — the callback is what
+	// establishes the session, so it cannot ask for one.
 	root.Handle("GET /api/health", http.HandlerFunc(s.handleHealth))
 	root.Handle("GET /api/auth/session", http.HandlerFunc(s.handleSession))
 	root.Handle("POST /api/auth/login", http.HandlerFunc(s.handleLogin))
 	root.Handle("POST /api/auth/logout", http.HandlerFunc(s.handleLogout))
+	root.Handle("GET /api/auth/google", http.HandlerFunc(s.handleAuthGoogle))
+	root.Handle("GET /api/auth/google/callback", http.HandlerFunc(s.handleAuthCallback))
 
 	// Everything else needs a session when a password is set.
 	root.Handle("/api/", s.requireAuth(s.mux))
@@ -138,6 +139,18 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 	})
 }
 
+// setSessionCookie opens a session for the browser.
+func (s *Server) setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(auth.SessionTTL.Seconds()),
+	})
+}
+
 // handleLogin checks the password and opens a session.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !s.auth.Required() {
@@ -159,14 +172,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(auth.SessionTTL.Seconds()),
-	})
+	s.setSessionCookie(w, token)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "required": true})
 }
 
@@ -253,6 +259,11 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.resetClient()
 
+	// The account is on the allowed list: it may sign in to the app itself.
+	if s.cfg.AllowsEmail(email) {
+		s.setSessionCookie(w, s.auth.OpenSession())
+	}
+
 	http.Redirect(w, r, withQuery(redirect, "signedIn", "1"), http.StatusFound)
 }
 
@@ -265,10 +276,12 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		authenticated = err == nil && s.auth.Valid(cookie.Value)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"authenticated":  authenticated,
-		"authRequired":   s.auth.Required(),
-		"signedIn":       ok,
-		"email":          email,
+		"authenticated": authenticated,
+		"authRequired":  s.auth.Required(),
+		// Can a Google account sign in to the app itself?
+		"googleCanAuth": s.cfg.GoogleEnabled() && len(s.cfg.AllowedEmails()) > 0,
+		"signedIn":      ok,
+		"email":         email,
 	})
 }
 

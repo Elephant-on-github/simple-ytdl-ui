@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { RouterView } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import TopBar from './components/TopBar.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import LoginPanel from './components/LoginPanel.vue'
@@ -12,6 +12,8 @@ import { useModeStore } from './stores/mode'
 const player = usePlayerStore()
 const session = useSessionStore()
 const mode = useModeStore()
+const route = useRoute()
+const router = useRouter()
 const hasPlayer = computed(() => player.isOpen)
 
 /* The footbar carries a live UTC clock, the way a studio page would. */
@@ -35,6 +37,11 @@ onMounted(() => {
   setUnauthorizedHandler(() => {
     session.authenticated = false
   })
+  // The result of a sign-in arrives in the query string; it is read by the
+  // view that cares about it and then tidied away.
+  if (route.query.signedIn || route.query.error) {
+    void router.replace({ path: route.path, query: {} })
+  }
 })
 
 onUnmounted(() => {

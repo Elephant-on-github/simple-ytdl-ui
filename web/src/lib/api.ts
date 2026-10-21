@@ -23,6 +23,8 @@ export interface Session {
   authenticated: boolean
   /** Is a password set on the server? */
   authRequired: boolean
+  /** Can a Google account sign in to the app itself? */
+  googleCanAuth: boolean
   /** Google: is this browser signed in to YouTube? */
   signedIn: boolean
   email: string

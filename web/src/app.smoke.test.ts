@@ -169,6 +169,27 @@ describe('app smoke', () => {
     app.unmount()
   })
 
+  it('shows the login screen with the google option when the server asks for one', async () => {
+    const before = responses['/api/auth/session']
+    responses['/api/auth/session'] = {
+      authenticated: false,
+      authRequired: true,
+      googleCanAuth: true,
+      signedIn: false,
+      email: '',
+    }
+
+    const { app, html } = await mount('/')
+
+    expect(html).toContain('This server is locked')
+    expect(html).toContain('Continue with Google')
+    // The app itself is not rendered while we are outside.
+    expect(html).not.toContain('youtube.com/watch?v=')
+
+    responses['/api/auth/session'] = before
+    app.unmount()
+  })
+
   it('swaps the accent identity when the mode changes', async () => {
     const { app } = await mount('/')
     const mode = useModeStore()

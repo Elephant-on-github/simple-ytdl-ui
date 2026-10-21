@@ -16,6 +16,8 @@ export const useSessionStore = defineStore('session', () => {
   /** The app itself: is a password set, and is this browser signed in? */
   const authRequired = ref(false)
   const authenticated = ref(true)
+  /** Can a Google account sign in to the app itself? */
+  const googleCanAuth = ref(false)
 
   const status = computed(() => {
     if (!googleEnabled.value) return 'unconfigured'
@@ -45,6 +47,7 @@ export const useSessionStore = defineStore('session', () => {
       email.value = session.email ?? ''
       authRequired.value = !!session.authRequired
       authenticated.value = session.authenticated !== false
+      googleCanAuth.value = !!session.googleCanAuth
       error.value = ''
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Could not reach the server'
@@ -121,6 +124,7 @@ export const useSessionStore = defineStore('session', () => {
     error,
     authRequired,
     authenticated,
+    googleCanAuth,
     needsLogin,
     status,
     refresh,

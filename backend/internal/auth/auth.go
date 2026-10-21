@@ -63,6 +63,18 @@ func (m *Manager) Login(password string) (string, bool) {
 	return token, true
 }
 
+// OpenSession opens a session without a password check. It is used for a
+// trusted identity that was proven elsewhere — a Google account that is on the
+// allowed list.
+func (m *Manager) OpenSession() string {
+	token := randomToken()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pruneLocked()
+	m.sessions[token] = m.now().Add(SessionTTL)
+	return token
+}
+
 // Valid reports whether the token belongs to an open session.
 func (m *Manager) Valid(token string) bool {
 	if !m.required {
