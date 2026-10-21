@@ -77,11 +77,32 @@ a **YouTube session**. The cheapest one is a cookies file, and it needs nothing 
 no Google Cloud project, no OAuth client, no API key, no quota. This is the same
 session `yt-dlp` itself uses.
 
-**1. Get a `cookies.txt` for your account.** Export the cookies of a signed-in
-YouTube session as a Netscape `cookies.txt`. A browser extension such as *Get
-cookies.txt LOCALLY* does this in a few clicks. yt-dlp's
-[wiki](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
-explains how to export them so YouTube will not rotate them away.
+**1. Get a `cookies.txt` for your account.** It is a Netscape cookie file with the
+session of a signed-in YouTube browser. Two ways to get one:
+
+*From the browser, in one command* — no extension needed, if you have `yt-dlp` on
+your machine:
+
+```bash
+yt-dlp --cookies-from-browser firefox --cookies cookies.txt "https://www.youtube.com/robots.txt"
+```
+
+`--cookies-from-browser` takes `brave`, `chrome`, `chromium`, `edge`, `firefox`,
+`opera`, `safari`, `vivaldi` or `whale`; add `:ProfileName` for a specific profile.
+`--cookies` is where the file is written. On Linux, Chromium browsers may need their
+keyring: `--cookies-from-browser chrome+gnomekeyring`.
+
+*With a browser extension* — install **Get cookies.txt LOCALLY** (Chrome and Firefox),
+open it while you are signed in on `youtube.com`, and export the domain
+`.youtube.com`.
+
+> **Export from a private window.** YouTube rotates the session cookies whenever a
+> YouTube tab is open, and the rotation invalidates the file you just exported. So:
+> sign in to YouTube in a private/incognito window, go to
+> `https://www.youtube.com/robots.txt` in that same window, export the cookies, and
+> close the private window right away. The
+> [yt-dlp wiki](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
+> has the details.
 
 **2. Mount the file and point the server at it.**
 
@@ -113,6 +134,10 @@ Download page and it syncs the same way — that part never needed a session at 
 > **Keep the cookies file private.** It is a full session of your YouTube account:
 > anyone holding it is you. Mount it read-only, do not put it in a public bucket, and
 > replace it when you sign out of YouTube.
+
+If the Playlists page complains about the session ("401 Unauthorized" or "could not
+read your playlists"), the file is stale or was never a signed-in session — export it
+again.
 
 ### Google sign-in, if you would rather have a button
 
