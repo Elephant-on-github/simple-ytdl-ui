@@ -12,6 +12,8 @@ services:
       - ./data:/data
       # The media itself. Point this at a bigger disk if you like.
       - ./library:/library
+      # Optional: a YouTube session. It may be read-only — the server copies it.
+      # - ./cookies.txt:/config/cookies.txt:ro
     environment:
       # --- server ---
       PORT: "8080"

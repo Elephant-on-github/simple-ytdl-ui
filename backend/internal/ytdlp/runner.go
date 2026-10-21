@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,11 +22,10 @@ type Runner struct {
 	// FfmpegBin is the path to the ffmpeg binary. When it is set it is handed
 	// to yt-dlp, so the server does not depend on ffmpeg being on the PATH.
 	FfmpegBin string
-	// CookiesFile is a Netscape cookies.txt with a YouTube session.
-	CookiesFile string
-	// CookiesFromBrowser asks yt-dlp to read the cookies from a browser
-	// profile on this machine.
-	CookiesFromBrowser string
+
+	mu              sync.RWMutex
+	cookiesFile     string
+	cookiesBrowser  string
 }
 
 // NewRunner returns a runner that uses the given yt-dlp binary.
@@ -47,23 +47,29 @@ func (r *Runner) WithFfmpeg(path string) *Runner {
 // private playlists and lists the playlists of the account — no Google Cloud
 // project and no API key involved.
 func (r *Runner) WithCookies(file, browser string) *Runner {
-	r.CookiesFile = file
-	r.CookiesFromBrowser = browser
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cookiesFile = file
+	r.cookiesBrowser = browser
 	return r
 }
 
 // HasCookies reports whether the runner carries a YouTube session.
 func (r *Runner) HasCookies() bool {
-	return r.CookiesFile != "" || r.CookiesFromBrowser != ""
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.cookiesFile != "" || r.cookiesBrowser != ""
 }
 
 // cookieArgs are the arguments that hand the session to yt-dlp.
 func (r *Runner) cookieArgs() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	switch {
-	case r.CookiesFile != "":
-		return []string{"--cookies", r.CookiesFile}
-	case r.CookiesFromBrowser != "":
-		return []string{"--cookies-from-browser", r.CookiesFromBrowser}
+	case r.cookiesFile != "":
+		return []string{"--cookies", r.cookiesFile}
+	case r.cookiesBrowser != "":
+		return []string{"--cookies-from-browser", r.cookiesBrowser}
 	default:
 		return nil
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -77,6 +78,9 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 	s.mux.HandleFunc("GET /api/auth/session", s.handleSession)
 	s.mux.HandleFunc("POST /api/auth/google/logout", s.handleGoogleLogout)
 	s.mux.HandleFunc("GET /api/playlists", s.handlePlaylists)
+	s.mux.HandleFunc("GET /api/session/cookies", s.handleCookies)
+	s.mux.HandleFunc("POST /api/session/cookies", s.handleSaveCookies)
+	s.mux.HandleFunc("DELETE /api/session/cookies", s.handleClearCookies)
 	s.mux.HandleFunc("GET /api/playlists/{id}/items", s.handlePlaylistItems)
 	s.mux.HandleFunc("POST /api/downloads", s.handleDownloads)
 	s.mux.HandleFunc("GET /api/jobs", s.handleJobs)
@@ -353,6 +357,92 @@ func (s *Server) handleGoogleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	s.forgetClient()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleCookies hands out the state of the YouTube session.
+func (s *Server) handleCookies(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"configured": s.manager.HasCookies(),
+		"pasted":     s.store.HasCookies(),
+	})
+}
+
+// handleSaveCookies takes a YouTube session that was pasted into the app and
+// checks it right away: a session that cannot list the playlists is worthless,
+// and the user should know before they leave.
+//
+// The body is the contents of a cookies.txt.
+func (s *Server) handleSaveCookies(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "could not read the cookies")
+		return
+	}
+	if !looksLikeCookies(body) {
+		writeError(w, http.StatusBadRequest, "that does not look like a cookies.txt (it should start with the Netscape cookie header)")
+		return
+	}
+
+	if err := s.store.SaveCookies(body); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.manager.SetCookies(s.store.CookiesPath())
+
+	// Check it right away: a session that cannot list the playlists is
+	// worthless, and the user should know now.
+	lists, err := s.manager.Playlists(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":       true,
+		"playlists": len(lists),
+	})
+}
+
+// handleClearCookies forgets the pasted YouTube session.
+func (s *Server) handleClearCookies(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.ClearCookies(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// Fall back to the session the server was started with, if there is one.
+	if s.cfg.CookiesFile != "" {
+		if err := s.store.SaveCookiesFrom(s.cfg.CookiesFile); err != nil {
+			log.Printf("could not use the youtube session in %s: %v", s.cfg.CookiesFile, err)
+		}
+	}
+	if s.store.HasCookies() {
+		s.manager.SetCookies(s.store.CookiesPath())
+	} else {
+		s.manager.SetCookies("")
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// looksLikeCookies is a cheap check that the body is a Netscape cookie file.
+func looksLikeCookies(body []byte) bool {
+	text := strings.TrimSpace(string(body))
+	if text == "" {
+		return false
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Every cookie line has seven tab separated fields.
+		return len(strings.Split(line, "\t")) >= 7
+	}
+	return false
 }
 
 // handlePlaylists lists the playlists of the account.

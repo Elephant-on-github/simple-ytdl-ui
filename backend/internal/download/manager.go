@@ -478,6 +478,12 @@ func (m *Manager) HasCookies() bool {
 	return m.runner.HasCookies()
 }
 
+// SetCookies points the server at another YouTube session file. It is used
+// when a session is pasted into the app.
+func (m *Manager) SetCookies(path string) {
+	m.runner.WithCookies(path, "")
+}
+
 // Playlists lists the playlists of the account the YouTube session belongs to.
 // It works without a Google Cloud project: the session in the cookies is all
 // that is needed.

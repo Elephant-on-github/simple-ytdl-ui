@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import PlaylistList from '../components/PlaylistList.vue'
+import SessionPanel from '../components/SessionPanel.vue'
 import { useJobsStore } from '../stores/jobs'
 import { useModeStore } from '../stores/mode'
 import { useSessionStore } from '../stores/session'
@@ -13,6 +14,9 @@ const mode = useModeStore()
 const jobs = useJobsStore()
 const route = useRoute()
 const router = useRouter()
+
+/** The address of this server, for the command in the session panel. */
+const serverURL = typeof window === 'undefined' ? '' : window.location.origin
 
 const playlists = ref<Playlist[]>([])
 const loading = ref(false)
@@ -113,30 +117,15 @@ async function sync(playlist: Playlist): Promise<void> {
       {{ error }}
     </p>
 
-    <!-- No YouTube session and no Google client: the playlists stay out of reach. -->
-    <section v-if="session.loaded && !session.playlistsAvailable" class="card frame">
-      <span class="tick tick--tl" aria-hidden="true" />
-      <span class="tick tick--tr" aria-hidden="true" />
-      <span class="tick tick--bl" aria-hidden="true" />
-      <span class="tick tick--br" aria-hidden="true" />
-
-      <p class="t-label">Optional</p>
-      <h2 class="t-italic card-title">No playlists yet</h2>
-      <p class="t-serif-body card-copy">
-        To browse the playlists of your own account, give the server a YouTube session:
-        a <code>cookies.txt</code> of your account, or a browser profile to read the
-        cookies from. No Google Cloud project, no API key, no quota.
+    <!-- No YouTube session yet: offer the two ways to get one. -->
+    <template v-if="session.loaded && !session.playlistsAvailable">
+      <SessionPanel :server-url="serverURL" />
+      <p class="t-meta faint">
+        Would rather sign in with a button? A Google OAuth client works too — see the
+        README. It needs a project in the Google Cloud console, the session above does
+        not.
       </p>
-      <p class="t-meta card-note">
-        A Google OAuth client works too, if you would rather sign in with a button.
-        Everything else works without either — paste a playlist link on the Download
-        page and it syncs straight into your library.
-      </p>
-      <RouterLink to="/" class="step card-cta">
-        Paste a playlist link
-        <span aria-hidden="true">→</span>
-      </RouterLink>
-    </section>
+    </template>
 
     <!-- Google is configured but the visitor has not signed in. -->
     <section

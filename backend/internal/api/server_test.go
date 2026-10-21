@@ -91,6 +91,19 @@ func newGuardedHarness(t *testing.T, password string) *harness {
 	return h
 }
 
+// doRaw sends a body as it is, without the JSON encoding.
+func (h *harness) doRaw(t *testing.T, method, target, contentType, body string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	rec := httptest.NewRecorder()
+	h.server.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
 // doWithCookie is like do, but sends the given cookies.
 func (h *harness) doWithCookie(t *testing.T, method, target string, body any, cookies []*http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
@@ -222,6 +235,68 @@ func TestPlaylistsWithoutASessionOrGoogle(t *testing.T) {
 	doc := decode(t, h.do(t, http.MethodGet, "/api/auth/session", nil))
 	if doc["playlistsAvailable"] != false {
 		t.Errorf("playlistsAvailable = %v, want false", doc["playlistsAvailable"])
+	}
+}
+
+func TestAPastedSessionIsStoredAndChecked(t *testing.T) {
+	h := newHarness(t, fakeytdlp.ModeOK)
+
+	// Something that is not a cookie file is refused.
+	rec := h.doRaw(t, http.MethodPost, "/api/session/cookies", "text/plain", "hello there")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+
+	// A cookie file is stored — the file is in the data directory, so it
+	// survives a restart of the container.
+	rec = h.doRaw(t, http.MethodPost, "/api/session/cookies", "text/plain",
+		"# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tabc\n")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	// The session is stored and checked right away: the fake yt-dlp answers
+	// the listing with its canned playlists.
+	doc := decode(t, rec)
+	if doc["ok"] != true {
+		t.Errorf("ok = %v, want true: the check did not pass (%s)", doc["ok"], rec.Body.String())
+	}
+	if doc["playlists"] != float64(3) {
+		t.Errorf("playlists = %v, want 3", doc["playlists"])
+	}
+
+	stored, err := os.ReadFile(filepath.Join(h.dir, "cookies.txt"))
+	if err != nil {
+		t.Fatalf("the session was not stored: %v", err)
+	}
+	if !strings.Contains(string(stored), "SID") {
+		t.Errorf("the stored session = %q", string(stored))
+	}
+
+	doc = decode(t, h.do(t, http.MethodGet, "/api/session/cookies", nil))
+	if doc["pasted"] != true {
+		t.Errorf("pasted = %v, want true", doc["pasted"])
+	}
+
+	// And it can be forgotten again.
+	rec = h.do(t, http.MethodDelete, "/api/session/cookies", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if _, err := os.Stat(filepath.Join(h.dir, "cookies.txt")); !os.IsNotExist(err) {
+		t.Error("the session file is still there")
+	}
+}
+
+func TestLooksLikeCookies(t *testing.T) {
+	if looksLikeCookies(nil) {
+		t.Error("an empty body looks like cookies")
+	}
+	if looksLikeCookies([]byte("hello")) {
+		t.Error("a sentence looks like cookies")
+	}
+	good := []byte("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tabc\n")
+	if !looksLikeCookies(good) {
+		t.Error("a cookie file does not look like cookies")
 	}
 }
 

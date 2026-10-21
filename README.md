@@ -77,34 +77,28 @@ a **YouTube session**. The cheapest one is a cookies file, and it needs nothing 
 no Google Cloud project, no OAuth client, no API key, no quota. This is the same
 session `yt-dlp` itself uses.
 
-**1. Get a `cookies.txt` for your account.** It is a Netscape cookie file with the
-session of a signed-in YouTube browser. Two ways to get one:
+**The easy way: paste it into the app.** Open the **Playlists** page and you will
+find a *YouTube session* panel. Paste the contents of your `cookies.txt` into it and
+press **Connect** — the server stores the session, checks it against YouTube right
+away, and tells you how many playlists it found. Nothing to mount, nothing to
+restart, and it works from a browser on another machine.
 
-*From the browser, in one command* — no extension needed, if you have `yt-dlp` on
-your machine:
+The panel also shows the exact command for your setup, with this server's address
+already filled in, so you can let the export do the uploading:
 
 ```bash
-yt-dlp --cookies-from-browser firefox --cookies cookies.txt "https://www.youtube.com/robots.txt"
+# Linux or macOS
+yt-dlp --cookies-from-browser chrome --cookies /tmp/yt.txt "https://www.youtube.com/robots.txt" \
+  && curl -X POST --data-binary @/tmp/yt.txt https://your-host/api/session/cookies
 ```
 
-`--cookies-from-browser` takes `brave`, `chrome`, `chromium`, `edge`, `firefox`,
-`opera`, `safari`, `vivaldi` or `whale`; add `:ProfileName` for a specific profile.
-`--cookies` is where the file is written. On Linux, Chromium browsers may need their
-keyring: `--cookies-from-browser chrome+gnomekeyring`.
+```powershell
+# Windows PowerShell
+yt-dlp --cookies-from-browser chrome --cookies yt.txt "https://www.youtube.com/robots.txt"
+Get-Content yt.txt -Raw | curl.exe -X POST --data-binary @- https://your-host/api/session/cookies
+```
 
-*With a browser extension* — install **Get cookies.txt LOCALLY** (Chrome and Firefox),
-open it while you are signed in on `youtube.com`, and export the domain
-`.youtube.com`.
-
-> **Export from a private window.** YouTube rotates the session cookies whenever a
-> YouTube tab is open, and the rotation invalidates the file you just exported. So:
-> sign in to YouTube in a private/incognito window, go to
-> `https://www.youtube.com/robots.txt` in that same window, export the cookies, and
-> close the private window right away. The
-> [yt-dlp wiki](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
-> has the details.
-
-**2. Mount the file and point the server at it.**
+**Or mount the file** if you would rather not paste it around:
 
 ```yaml
 services:
@@ -118,6 +112,10 @@ services:
       YTDLP_COOKIES: /config/cookies.txt
 ```
 
+The file may be mounted read-only: the server copies it into the data directory and
+lets `yt-dlp` refresh that copy. (yt-dlp rewrites the cookie jar after every run and
+crashes on a file it cannot write to — so the copy is what keeps it happy.)
+
 **Or let yt-dlp read the cookies out of a browser profile** on the machine that runs
 the server — handy when the server is your own machine:
 
@@ -130,6 +128,33 @@ With a session in place the Playlists page lists `youtube.com/feed/playlists`, t
 **Sync** button pulls every track of a playlist into your library, and private
 playlists and age-restricted videos become reachable. Paste a playlist link on the
 Download page and it syncs the same way — that part never needed a session at all.
+
+**Getting the file in the first place.** It is a Netscape cookie file with the
+session of a signed-in YouTube browser:
+
+*From the browser, in one command* — no extension needed, if you have `yt-dlp` on
+your machine:
+
+```bash
+yt-dlp --cookies-from-browser firefox --cookies cookies.txt "https://www.youtube.com/robots.txt"
+```
+
+`--cookies-from-browser` takes `brave`, `chrome`, `chromium`, `edge`, `firefox`,
+`opera`, `safari`, `vivaldi` or `whale`; add `:ProfileName` for a specific profile.
+`--cookies` is the file it writes. On Linux, Chromium browsers may need their
+keyring: `--cookies-from-browser chrome+gnomekeyring`.
+
+*With a browser extension* — install **Get cookies.txt LOCALLY** (Chrome and Firefox),
+open it while you are signed in on `youtube.com`, and export the domain
+`.youtube.com`.
+
+> **Export from a private window.** YouTube rotates the session cookies whenever a
+> YouTube tab is open, and the rotation invalidates the file you just exported. So:
+> sign in to YouTube in a private/incognito window, go to
+> `https://www.youtube.com/robots.txt` in that same window, export the cookies, and
+> close the private window right away. The
+> [yt-dlp wiki](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
+> has the details.
 
 > **Keep the cookies file private.** It is a full session of your YouTube account:
 > anyone holding it is you. Mount it read-only, do not put it in a public bucket, and
@@ -345,6 +370,9 @@ rows marked *public* answer without one.
 | `POST` | `/api/auth/google/logout` | forget the stored Google token |
 | `GET` | `/api/config` | feature flags and defaults |
 | `GET` | `/api/playlists` | your playlists — from the session or from Google |
+| `GET` | `/api/session/cookies` | whether the server has a YouTube session |
+| `POST` | `/api/session/cookies` | paste a session; it is stored and checked |
+| `DELETE` | `/api/session/cookies` | forget the session |
 | `GET` | `/api/playlists/{id}/items` | the tracks of a playlist |
 | `POST` | `/api/downloads` | queue a URL (single or playlist) |
 | `GET` | `/api/jobs` | the job queue |

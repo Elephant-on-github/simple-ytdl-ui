@@ -62,9 +62,24 @@ func newServer(cfg config.Config) (http.Handler, error) {
 	}
 
 	st := store.New(cfg.DataDir)
-	runner := ytdlp.NewRunner(cfg.YtDlpBin).
-		WithFfmpeg(cfg.FfmpegBin).
-		WithCookies(cfg.CookiesFile, cfg.CookiesFromBrowser)
+	runner := ytdlp.NewRunner(cfg.YtDlpBin).WithFfmpeg(cfg.FfmpegBin)
+
+	// The YouTube session. A session pasted into the app wins; otherwise the
+	// file the container was started with is copied into the data directory.
+	// The copy matters: yt-dlp rewrites the cookie jar after every run, so it
+	// needs a file it can write to, and a mounted one is often read-only.
+	if !st.HasCookies() && cfg.CookiesFile != "" {
+		if err := st.SaveCookiesFrom(cfg.CookiesFile); err != nil {
+			log.Printf("could not use the youtube session in %s: %v", cfg.CookiesFile, err)
+		}
+	}
+	switch {
+	case st.HasCookies():
+		runner.WithCookies(st.CookiesPath(), "")
+	case cfg.CookiesFromBrowser != "":
+		runner.WithCookies("", cfg.CookiesFromBrowser)
+	}
+
 	// The media can live on its own volume: LIBRARY_DIR if it is set,
 	// the data directory otherwise.
 	mgr := download.NewManager(runner, st, cfg.MediaDir(), cfg.ConcurrentDownloads)

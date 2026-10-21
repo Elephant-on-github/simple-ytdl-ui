@@ -16,6 +16,7 @@ const (
 	libraryFile = "library.json"
 	jobsFile    = "jobs.json"
 	googleFile  = "google.json"
+	cookiesFile = "cookies.txt"
 )
 
 // Store is a JSON-backed data store. It is safe for concurrent use.
@@ -260,6 +261,51 @@ func (s *Store) ClearGoogleToken() error {
 	s.googleRefreshToken = ""
 	s.googleEmail = ""
 	err := os.Remove(filepath.Join(s.dir, googleFile))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// CookiesPath is where a YouTube session pasted into the app is kept.
+func (s *Store) CookiesPath() string {
+	return filepath.Join(s.dir, cookiesFile)
+}
+
+// HasCookies reports whether a YouTube session was pasted into the app.
+func (s *Store) HasCookies() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	info, err := os.Stat(s.CookiesPath())
+	return err == nil && info.Size() > 0
+}
+
+// SaveCookies stores a YouTube session. The file is only readable by the
+// server: it is a full session of an account.
+func (s *Store) SaveCookies(data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return os.WriteFile(s.CookiesPath(), data, 0o600)
+}
+
+// SaveCookiesFrom copies a cookie file into the store.
+//
+// yt-dlp rewrites the cookie jar after every run, so it needs a file it can
+// write to. A file mounted into the container is often read-only, so the
+// server works on its own copy.
+func (s *Store) SaveCookiesFrom(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return s.SaveCookies(data)
+}
+
+// ClearCookies forgets the pasted YouTube session.
+func (s *Store) ClearCookies() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err := os.Remove(s.CookiesPath())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

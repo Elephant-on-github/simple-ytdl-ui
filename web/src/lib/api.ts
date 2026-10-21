@@ -166,6 +166,17 @@ export const api = {
 
   playlists: () => request<{ items: Playlist[] }>('/api/playlists'),
 
+  cookies: () => request<{ configured: boolean; pasted: boolean }>('/api/session/cookies'),
+
+  saveCookies: (cookies: string) =>
+    request<{ ok: boolean; playlists?: number; error?: string }>('/api/session/cookies', {
+      method: 'POST',
+      body: cookies,
+      headers: { 'Content-Type': 'text/plain' },
+    }),
+
+  clearCookies: () => request<{ ok: boolean }>('/api/session/cookies', { method: 'DELETE' }),
+
   playlistItems: (playlistId: string, pageToken?: string) =>
     request<{ items: PlaylistItem[]; nextPageToken: string }>(
       `/api/playlists/${enc(playlistId)}/items${pageToken ? `?pageToken=${enc(pageToken)}` : ''}`,
