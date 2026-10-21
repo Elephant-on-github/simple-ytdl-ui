@@ -116,6 +116,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: {
         Accept: 'application/json',
         ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+        // A caller that sets its own headers means it.
+        ...(init?.headers ?? {}),
       },
     })
   } catch (err) {

@@ -40,4 +40,14 @@ describe('api.playlistItems', () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe('/api/playlists/PL%2F1%3Fx/items')
   })
+
+  it('sends a pasted session as plain text', async () => {
+    const fetchMock = stubFetch()
+
+    await api.saveCookies('# Netscape HTTP Cookie File')
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('text/plain')
+    expect(init.body).toContain('Netscape')
+  })
 })
