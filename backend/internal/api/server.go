@@ -88,6 +88,7 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 	s.mux.HandleFunc("POST /api/jobs/{id}/resume", s.handleResume)
 	s.mux.HandleFunc("DELETE /api/jobs/{id}", s.handleRemoveJob)
 	s.mux.HandleFunc("POST /api/jobs/pause-all", s.handlePauseAll)
+	s.mux.HandleFunc("POST /api/jobs/resume-all", s.handleResumeAll)
 	s.mux.HandleFunc("POST /api/jobs/cancel-all", s.handleCancelAll)
 	s.mux.HandleFunc("DELETE /api/jobs/finished", s.handleClearFinished)
 	s.mux.HandleFunc("GET /api/library", s.handleLibrary)
@@ -605,6 +606,11 @@ func (s *Server) handleRemoveJob(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePauseAll(w http.ResponseWriter, r *http.Request) {
 	s.manager.PauseAll()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleResumeAll(w http.ResponseWriter, r *http.Request) {
+	s.manager.ResumeAll()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

@@ -92,7 +92,7 @@ function open(item: Item): void {
           </button>
         </div>
 
-        <h3 class="title t-plate-title">{{ item.title }}</h3>
+        <h3 class="title t-body">{{ item.title }}</h3>
         <p class="artist t-meta truncate">
           <template v-if="item.artist">{{ item.artist }}</template>
           <template v-else>Unknown artist</template>
@@ -207,7 +207,7 @@ function open(item: Item): void {
 }
 
 .remove {
-  color: var(--ink-faint);
+  color: var(--accent);
   transition: color var(--dur-fast) var(--ease-out);
 }
 

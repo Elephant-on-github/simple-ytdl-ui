@@ -378,7 +378,7 @@ function onVolume(event: Event): void {
   place-items: center;
   width: 26px;
   height: 26px;
-  color: var(--ink-faint);
+  color: var(--accent);
   transition: color var(--dur-fast) var(--ease-out);
 }
 

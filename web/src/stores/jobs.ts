@@ -90,6 +90,14 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
+  async function resumeAll(): Promise<void> {
+    try {
+      await api.resumeAll()
+    } finally {
+      await refresh()
+    }
+  }
+
   async function cancelAll(): Promise<void> {
     try {
       await api.cancelAll()
@@ -110,5 +118,5 @@ export const useJobsStore = defineStore('jobs', () => {
     items.value = []
   }
 
-  return { items, error, loading, activeCount, merge, refresh, enqueue, cancel, pause, resume, remove, pauseAll, cancelAll, clearFinished, clear }
+  return { items, error, loading, activeCount, merge, refresh, enqueue, cancel, pause, resume, remove, pauseAll, resumeAll, cancelAll, clearFinished, clear }
 })

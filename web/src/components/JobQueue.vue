@@ -66,6 +66,15 @@ const activeCount = computed(() => jobs.activeCount)
           Pause all
         </button>
         <button
+          v-if="jobs.items.some((j) => j.status === 'paused')"
+          type="button"
+          class="sec-action t-nav"
+          title="Resume all paused downloads"
+          @click="jobs.resumeAll()"
+        >
+          Resume all
+        </button>
+        <button
           v-if="activeCount"
           type="button"
           class="sec-action t-nav"
@@ -336,7 +345,7 @@ const activeCount = computed(() => jobs.activeCount)
 }
 
 .job-action {
-  color: var(--ink-faint);
+  color: var(--accent);
   width: 22px;
   height: 22px;
   display: grid;

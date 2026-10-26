@@ -622,6 +622,23 @@ func (m *Manager) PauseAll() error {
 	return nil
 }
 
+// ResumeAll resumes every paused job.
+func (m *Manager) ResumeAll() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for i := range m.jobs {
+		if m.jobs[i].Status == store.StatusPaused {
+			m.jobs[i].Status = store.StatusQueued
+			m.jobs[i].UpdatedAt = time.Now().UTC()
+			m.active++
+		}
+	}
+	m.persistLocked()
+	m.cond.Broadcast()
+	return nil
+}
+
 // CancelAll cancels every queued and running job.
 func (m *Manager) CancelAll() error {
 	m.mu.Lock()

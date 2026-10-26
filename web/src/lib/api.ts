@@ -190,6 +190,7 @@ export const api = {
   cancelJob: (id: string) => request<{ ok: boolean }>(`/api/jobs/${enc(id)}/cancel`, { method: 'POST' }),
   pauseJob: (id: string) => request<{ ok: boolean }>(`/api/jobs/${enc(id)}/pause`, { method: 'POST' }),
   resumeJob: (id: string) => request<{ ok: boolean }>(`/api/jobs/${enc(id)}/resume`, { method: 'POST' }),
+  resumeAll: () => request<{ ok: boolean }>('/api/jobs/resume-all', { method: 'POST' }),
   removeJob: (id: string) => request<{ ok: boolean }>(`/api/jobs/${enc(id)}`, { method: 'DELETE' }),
   pauseAll: () => request<{ ok: boolean }>('/api/jobs/pause-all', { method: 'POST' }),
   cancelAll: () => request<{ ok: boolean }>('/api/jobs/cancel-all', { method: 'POST' }),
