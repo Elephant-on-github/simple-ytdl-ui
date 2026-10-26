@@ -51,11 +51,16 @@ RUN apk add --no-cache \
  && rm -rf /var/cache/apk/* /root/.cache/pip
 
 RUN adduser -D -u 10001 ytdl \
- && mkdir -p /data /library \
- && chown -R ytdl:ytdl /data /library
+ && mkdir -p /data /library
+
+# su-exec drops privileges the way gosu does, but it is a tiny static binary
+# that fits in an Alpine image.
+RUN apk add --no-cache su-exec
 
 # Only two files make up the application.
 COPY --from=build /out/server /usr/local/bin/server
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod 0755 /usr/local/bin/entrypoint.sh
 
 ENV DATA_DIR=/data \
     LIBRARY_DIR=/library \
@@ -64,7 +69,6 @@ ENV DATA_DIR=/data \
     FFMPEG_BIN=/usr/bin/ffmpeg \
     TZ=UTC
 
-USER ytdl
 WORKDIR /data
 VOLUME ["/data", "/library"]
 EXPOSE 8080
@@ -73,4 +77,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 || exit 1
 
-ENTRYPOINT ["/usr/local/bin/server"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
