@@ -48,6 +48,7 @@ RUN apk add --no-cache \
       python3 \
       py3-pip \
  && pip install --no-cache-dir --break-system-packages yt-dlp \
+ && ln -sf /usr/bin/yt-dlp /usr/local/bin/yt-dlp \
  && rm -rf /var/cache/apk/* /root/.cache/pip
 
 RUN adduser -D -u 10001 ytdl \
