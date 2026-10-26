@@ -34,59 +34,28 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
 
 
 # ---------------------------------------------------------------------------
-# Stage 3 — fetch a static ffmpeg (no shared library dependencies)
-# ---------------------------------------------------------------------------
-FROM alpine:3.20 AS ffmpeg
-ARG TARGETARCH
-
-RUN apk add --no-cache curl ca-certificates
-
-# A fully static build, so the final image needs no shared libraries at all.
-RUN set -eux; \
-    case "${TARGETARCH}" in \
-      amd64) asset=ffmpeg-master-latest-linux64-gpl ;; \
-      arm64) asset=ffmpeg-master-latest-linuxarm64-gpl ;; \
-      *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL -o /tmp/ffmpeg.tar.xz \
-      "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${asset}.tar.xz"; \
-    mkdir -p /tmp/ffmpeg; \
-    tar -xf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg; \
-    FF=$(find /tmp/ffmpeg -name 'ffmpeg' -type f | head -n 1); \
-    cp "$FF" /usr/local/bin/ffmpeg; \
-    chmod 0755 /usr/local/bin/ffmpeg; \
-    /usr/local/bin/ffmpeg -version | head -n 1
-
-
-# ---------------------------------------------------------------------------
-# Stage 4 — runtime: Alpine, three static binaries, nothing else
+# Stage 3 - runtime: Alpine with ffmpeg and yt-dlp from packages
 # ---------------------------------------------------------------------------
 FROM alpine:3.20 AS runtime
 
-RUN apk add --no-cache ca-certificates tzdata \
- && rm -rf /var/cache/apk/*
-
-# yt-dlp is pinned to a fresh release: YouTube breaks older versions regularly.
-# The standalone binary bundles its own Python, so no interpreter is needed.
-ARG TARGETARCH
-RUN set -eux; \
-    case "${TARGETARCH}" in \
-      amd64) asset=yt-dlp_linux ;; \
-      arm64) asset=yt-dlp_linux_aarch64 ;; \
-      *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    wget -qO /usr/local/bin/yt-dlp \
-      "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${asset}"; \
-    chmod 0755 /usr/local/bin/yt-dlp; \
-    yt-dlp --version
+# ffmpeg from Alpine includes the codecs yt-dlp needs (libx264, libmp3lame,
+# libvpx, libopus, ...). yt-dlp is installed with pip so the latest release
+# is used rather than the (often stale) Alpine package.
+RUN apk add --no-cache \
+      ca-certificates \
+      tzdata \
+      ffmpeg \
+      python3 \
+      py3-pip \
+ && pip install --no-cache-dir --break-system-packages yt-dlp \
+ && rm -rf /var/cache/apk/* /root/.cache/pip
 
 RUN adduser -D -u 10001 ytdl \
  && mkdir -p /data /library \
  && chown -R ytdl:ytdl /data /library
 
-# Only three files make up the application.
+# Only two files make up the application.
 COPY --from=build /out/server /usr/local/bin/server
-COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/bin/ffmpeg
 
 ENV DATA_DIR=/data \
     LIBRARY_DIR=/library \
