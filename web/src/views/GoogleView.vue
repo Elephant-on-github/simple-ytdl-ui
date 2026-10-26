@@ -106,14 +106,48 @@ async function onConnected(): Promise<void> {
     loadError.value = ''
   }
 }
+
+async function signIn(): Promise<void> {
+  signingIn.value = true
+  error.value = ''
+  try {
+    // Come back to this page when Google is done.
+    await session.signIn(route.path)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Could not start the sign-in.'
+    signingIn.value = false
+  }
+}
+
+async function sync(playlist: Playlist): Promise<void> {
+  syncing.value = playlist.id
+  error.value = ''
+  try {
+    await jobs.enqueue(`https://www.youtube.com/playlist?list=${playlist.id}`, mode.mode, true)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Could not start the sync.'
+  } finally {
+    syncing.value = null
+  }
+}
+
+/** A session arrived (or was removed): load the playlists again. */
+async function onConnected(): Promise<void> {
+  await session.refresh()
+  if (session.playlistsAvailable) {
+    await loadPlaylists()
+  } else {
+    loadError.value = ''
+  }
+}
 </script>
 
 <template>
   <div class="view">
     <header class="head">
       <div>
-        <p class="eyebrow">Your YouTube</p>
-        <h1 class="t-display head-title">Playlists</h1>
+        <p class="eyebrow">Google</p>
+        <h1 class="t-display head-title">Google Playlists</h1>
       </div>
       <div v-if="session.signedIn" class="account">
         <span class="t-meta truncate">{{ session.email }}</span>

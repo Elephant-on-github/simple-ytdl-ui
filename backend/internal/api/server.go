@@ -95,6 +95,9 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 	s.mux.HandleFunc("DELETE /api/library/{id}", s.handleDeleteItem)
 	s.mux.HandleFunc("GET /api/library/{id}/stream", s.handleStream)
 	s.mux.HandleFunc("GET /api/library/{id}/cover", s.handleCover)
+	s.mux.HandleFunc("GET /api/schedules", s.handleSchedules)
+	s.mux.HandleFunc("POST /api/schedules", s.handleCreateSchedule)
+	s.mux.HandleFunc("DELETE /api/schedules/{id}", s.handleRemoveSchedule)
 
 	return s
 }
@@ -621,6 +624,52 @@ func (s *Server) handleCancelAll(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleClearFinished(w http.ResponseWriter, r *http.Request) {
 	s.manager.ClearFinished()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleSchedules lists all scheduled downloads.
+func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
+	schedules := s.manager.Schedules()
+	writeJSON(w, http.StatusOK, map[string]any{"schedules": schedules})
+}
+
+// handleCreateSchedule creates a new scheduled download.
+func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		URL       string `json:"url"`
+		Mode      string `json:"mode"`
+		Folder    string `json:"folder"`
+		Frequency string `json:"frequency"`
+		Title     string `json:"title"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "the request body must be JSON")
+		return
+	}
+
+	sched := store.Schedule{
+		URL:       body.URL,
+		Mode:      body.Mode,
+		Folder:    body.Folder,
+		Frequency: body.Frequency,
+		Title:     body.Title,
+		NextRun:   time.Now(), // schedule for now
+	}
+
+	if err := s.manager.SaveSchedule(sched); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "schedule": sched})
+}
+
+// handleRemoveSchedule removes a scheduled download.
+func (s *Server) handleRemoveSchedule(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.manager.RemoveSchedule(id); err != nil {
+		writeError(w, http.StatusNotFound, "unknown schedule")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

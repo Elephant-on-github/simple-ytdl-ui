@@ -666,6 +666,27 @@ func (m *Manager) CancelAll() error {
 	return nil
 }
 
+// Schedules returns all scheduled downloads.
+func (m *Manager) Schedules() []store.Schedule {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.store.Schedules()
+}
+
+// SaveSchedule saves or updates a scheduled download.
+func (m *Manager) SaveSchedule(sched store.Schedule) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.store.SaveSchedule(sched)
+}
+
+// RemoveSchedule removes a scheduled download.
+func (m *Manager) RemoveSchedule(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.store.RemoveSchedule(id)
+}
+
 // ClearFinished removes every completed, failed, canceled and paused job.
 func (m *Manager) ClearFinished() error {
 	m.mu.Lock()

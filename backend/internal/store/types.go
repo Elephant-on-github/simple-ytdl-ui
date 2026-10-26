@@ -47,3 +47,15 @@ const (
 	StatusCanceled  = "canceled"
 	StatusPaused    = "paused"
 )
+
+// Schedule is a recurring download schedule.
+type Schedule struct {
+	ID        string    `json:"id"`
+	URL       string    `json:"url"`      // YouTube playlist URL
+	Title     string    `json:"title"`    // Playlist title (optional)
+	Mode      string    `json:"mode"`     // "video" | "music"
+	Folder    string    `json:"folder"`   // Target output folder
+	Frequency string    `json:"frequency"` // "daily", "weekly", "monthly"
+	NextRun   time.Time `json:"nextRun"`  // Next scheduled run time
+	CreatedAt time.Time `json:"createdAt"`
+}

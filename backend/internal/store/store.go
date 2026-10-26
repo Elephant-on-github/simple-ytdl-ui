@@ -17,7 +17,20 @@ const (
 	jobsFile    = "jobs.json"
 	googleFile  = "google.json"
 	cookiesFile = "cookies.txt"
+	schedulesFile = "schedules.json"
 )
+
+// Schedule is a recurring download schedule.
+type Schedule struct {
+	ID        string    `json:"id"`
+	URL       string    `json:"url"`      // YouTube playlist URL
+	Title     string    `json:"title"`    // Playlist title (optional, fetched later)
+	Mode      string    `json:"mode"`     // "video" | "music"
+	Folder    string    `json:"folder"`   // Target output folder
+	Frequency string    `json:"frequency"` // "daily", "weekly", "monthly"
+	NextRun   time.Time `json:"nextRun"`  // Next scheduled run time
+	CreatedAt time.Time `json:"createdAt"`
+}
 
 // Store is a JSON-backed data store. It is safe for concurrent use.
 type Store struct {
@@ -26,6 +39,7 @@ type Store struct {
 
 	items []Item
 	jobs  []Job
+	schedules []Schedule
 
 	googleRefreshToken string
 	googleEmail        string
@@ -55,6 +69,13 @@ func (s *Store) load() {
 	}
 	if s.loadJSON(jobsFile, &jobs) {
 		s.jobs = jobs.Jobs
+	}
+
+	var schedules struct {
+		Schedules []Schedule `json:"schedules"`
+	}
+	if s.loadJSON(schedulesFile, &schedules) {
+		s.schedules = schedules.Schedules
 	}
 
 	var google struct {
@@ -315,6 +336,60 @@ func (s *Store) ClearCookies() error {
 	err := os.Remove(s.CookiesPath())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
+	}
+	return nil
+}
+
+// Schedules returns all scheduled downloads.
+func (s *Store) Schedules() []Schedule {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Schedule, len(s.schedules))
+	copy(out, s.schedules)
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	return out
+}
+
+// SaveSchedule saves or updates a schedule.
+func (s *Store) SaveSchedule(sched Schedule) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if sched.ID == "" {
+		sched.ID = newJobID()
+		sched.CreatedAt = time.Now()
+	}
+
+	// Replace existing or append
+	for i, existing := range s.schedules {
+		if existing.ID == sched.ID {
+			sched.CreatedAt = existing.CreatedAt
+			s.schedules[i] = sched
+			return s.writeAtomic(schedulesFile, struct {
+				Schedules []Schedule `json:"schedules"`
+			}{Schedules: s.schedules}, 0o644)
+		}
+	}
+	s.schedules = append(s.schedules, sched)
+	return s.writeAtomic(schedulesFile, struct {
+		Schedules []Schedule `json:"schedules"`
+	}{Schedules: s.schedules}, 0o644)
+}
+
+// RemoveSchedule removes a scheduled download.
+func (s *Store) RemoveSchedule(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i, s := range s.schedules {
+		if s.ID == id {
+			s.schedules = append(s.schedules[:i], s.schedules[i+1:]...)
+			return s.writeAtomic(schedulesFile, struct {
+				Schedules []Schedule `json:"schedules"`
+			}{Schedules: s.schedules}, 0o644)
+		}
 	}
 	return nil
 }

@@ -82,6 +82,16 @@ export interface PlaylistItem {
   duration: number
 }
 
+export interface Schedule {
+  id: string
+  url: string
+  mode: Mode
+  folder: string
+  frequency: 'daily' | 'weekly' | 'monthly'
+  nextRun: string
+  createdAt: string
+}
+
 export interface DownloadRequest {
   url: string
   mode: Mode
@@ -195,6 +205,15 @@ export const api = {
   pauseAll: () => request<{ ok: boolean }>('/api/jobs/pause-all', { method: 'POST' }),
   cancelAll: () => request<{ ok: boolean }>('/api/jobs/cancel-all', { method: 'POST' }),
   clearFinished: () => request<{ ok: boolean }>('/api/jobs/finished', { method: 'DELETE' }),
+
+  schedules: () => request<{ schedules: Schedule[] }>('/api/schedules'),
+  saveSchedule: (schedule: Schedule) =>
+    request<{ ok: boolean; schedule: Schedule }>('/api/schedules', {
+      method: 'POST',
+      body: JSON.stringify(schedule),
+    }),
+  removeSchedule: (id: string) =>
+    request<{ ok: boolean }>(`/api/schedules/${enc(id)}`, { method: 'DELETE' }),
 
   library: () => request<{ items: Item[] }>('/api/library'),
 

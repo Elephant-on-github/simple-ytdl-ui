@@ -7,7 +7,8 @@ const route = useRoute()
 const links = [
   { name: 'download', label: 'Download', to: '/' },
   { name: 'library', label: 'Library', to: '/library' },
-  { name: 'playlists', label: 'Playlists', to: '/playlists' },
+  { name: 'google', label: 'Google', to: '/google' },
+  { name: 'schedule', label: 'Schedule', to: '/schedule' },
 ]
 
 const activeName = computed(() => String(route.name ?? 'download'))
