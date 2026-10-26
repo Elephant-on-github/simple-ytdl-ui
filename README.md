@@ -65,6 +65,11 @@ without an account:
 docker pull ghcr.io/elephant-on-github/simple-ytdl-ui:latest
 ```
 
+The runtime image is Alpine-based and ships only three static binaries — the Go
+server, a static build of `ffmpeg` (no shared libraries) and the standalone
+`yt-dlp` (which bundles its own Python). The image is small enough to pull on a
+slow connection and starts in a second.
+
 > Forking this? GitHub makes a new package private, and only the owner of the account
 > can change that. Set your package to **Public** once, in its settings.
 
