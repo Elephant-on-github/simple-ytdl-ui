@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useSchedulesStore } from '../stores/schedules'
-import { api, type Schedule } from '../lib/api'
+import type { Schedule } from '../lib/api'
 
 const schedules = useSchedulesStore()
 
