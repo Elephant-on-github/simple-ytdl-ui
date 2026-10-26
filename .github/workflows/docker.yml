@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: simple-ytdl-ui
 
 permissions:
   contents: read
@@ -85,7 +85,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/elephant-on-github/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,format=short,suffix=-${{ matrix.suffix }}
 
@@ -128,7 +128,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/elephant-on-github/${{ env.IMAGE_NAME }}
           flavor: latest=auto
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
@@ -142,8 +142,8 @@ jobs:
           SHA=${{ github.sha }}
           SHORT_SHA=$(echo "$SHA" | cut -c1-7)
           # Build the list of per-arch images from the sha tags.
-          AMD64="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}-amd64"
-          ARM64="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}-arm64"
+          AMD64="${{ env.REGISTRY }}/elephant-on-github/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}-amd64"
+          ARM64="${{ env.REGISTRY }}/elephant-on-github/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}-arm64"
           # Resolve the user-facing tags from the metadata action.
           TAGS="${{ steps.meta.outputs.tags }}"
           for tag in $TAGS; do
