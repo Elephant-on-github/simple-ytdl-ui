@@ -13,8 +13,9 @@ download lands in a browsable, playable library on your own disk.
 - **One container.** Go backend, Vue frontend, `yt-dlp` and `ffmpeg` in a single image.
 - **Best-quality MP3.** The music toggle extracts the highest-bitrate audio stream to
   MP3, with the cover art and the tags baked in.
-- **Playlists.** A playlist URL becomes one job per track, each with its own progress
-  and each individually cancellable.
+- **Playlists.** A playlist URL becomes one job per track, each with its own progress,
+  each individually pausable, resumable, cancellable and removable. Long-running
+  playlists come with **Pause all**, **Cancel all** and **Clear finished**.
 - **Your own playlists, without a Google Cloud project.** Hand the server a YouTube
   session — a `cookies.txt` — and it lists your library and syncs from it. No OAuth
   client, no API key, no quota.
@@ -384,6 +385,12 @@ rows marked *public* answer without one.
 | `POST` | `/api/downloads` | queue a URL (single or playlist) |
 | `GET` | `/api/jobs` | the job queue |
 | `POST` | `/api/jobs/{id}/cancel` | cancel a job |
+| `POST` | `/api/jobs/{id}/pause` | pause a job (keeps the partial file) |
+| `POST` | `/api/jobs/{id}/resume` | resume a paused job |
+| `DELETE` | `/api/jobs/{id}` | remove a job from the list |
+| `POST` | `/api/jobs/pause-all` | pause every queued and running job |
+| `POST` | `/api/jobs/cancel-all` | cancel every queued and running job |
+| `DELETE` | `/api/jobs/finished` | drop finished jobs from the list |
 | `GET` | `/api/library` | everything downloaded |
 | `DELETE` | `/api/library/{id}` | delete an item and its file |
 | `GET` | `/api/library/{id}/stream` | stream the media (Range supported) |

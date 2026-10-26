@@ -186,6 +186,7 @@ func (m *Manager) enqueueEntries(mode ytdlp.Mode, entries []ytdlp.Info, playlist
 			URL:       t.url,
 			VideoID:   t.videoID,
 			Mode:      string(mode),
+			Playlist:  playlistTitle,
 			Status:    store.StatusQueued,
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -277,8 +278,8 @@ func (m *Manager) run(t *task) {
 		m.mu.Unlock()
 		return
 	}
-	if m.jobs[idx].Status == store.StatusCanceled {
-		// Canceled while it was queued; Cancel already accounted for it.
+	if m.jobs[idx].Status == store.StatusCanceled || m.jobs[idx].Status == store.StatusPaused {
+		// Canceled or paused while it was queued; the status is already set.
 		m.mu.Unlock()
 		return
 	}
@@ -299,12 +300,23 @@ func (m *Manager) run(t *task) {
 	defer m.mu.Unlock()
 
 	canceled := ctx.Err() != nil
+	// Pause() sets the status before killing the process, so the job
+	// survives the run as paused instead of canceled.
 	delete(m.cancels, t.id)
 	cancel()
 	delete(m.persist, t.id)
 
 	idx = m.indexOf(t.id)
 	if idx < 0 {
+		m.active--
+		m.cond.Broadcast()
+		return
+	}
+
+	// If the job was paused or resumed while the process was dying, the
+	// status is no longer "running" — a new run() may already be queued,
+	// and this one must not overwrite its status.
+	if m.jobs[idx].Status != store.StatusRunning {
 		m.active--
 		m.cond.Broadcast()
 		return
@@ -460,6 +472,221 @@ func (m *Manager) Cancel(id string) error {
 	default:
 		// Already finished, nothing to cancel.
 		return nil
+	}
+}
+
+// Pause stops a running or queued job and leaves the partial file on disk, so
+// the download can be resumed later. yt-dlp continues from the partial file
+// when the job is resumed.
+func (m *Manager) Pause(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	idx := m.indexOf(id)
+	if idx < 0 {
+		return fmt.Errorf("unknown job %q", id)
+	}
+
+	switch m.jobs[idx].Status {
+	case store.StatusQueued:
+		m.jobs[idx].Status = store.StatusPaused
+		m.jobs[idx].UpdatedAt = time.Now().UTC()
+		m.active--
+		m.persistLocked()
+		m.cond.Broadcast()
+	case store.StatusRunning:
+		if cancel, ok := m.cancels[id]; ok {
+			cancel()
+		}
+		// The status is set in run(), once the process has actually stopped.
+		// Mark it here too, in case the process takes a moment to die.
+		m.jobs[idx].Status = store.StatusPaused
+		m.jobs[idx].UpdatedAt = time.Now().UTC()
+		m.active--
+		m.persistLocked()
+		m.cond.Broadcast()
+	case store.StatusPaused:
+		// Already paused, nothing to do.
+	default:
+		return fmt.Errorf("job %q cannot be paused", id)
+	}
+	return nil
+}
+
+// Resume puts a paused job back on the queue. yt-dlp continues from the
+// partial file it left behind.
+func (m *Manager) Resume(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	idx := m.indexOf(id)
+	if idx < 0 {
+		return fmt.Errorf("unknown job %q", id)
+	}
+	if m.jobs[idx].Status != store.StatusPaused {
+		return fmt.Errorf("job %q is not paused", id)
+	}
+
+	j := m.jobs[idx]
+	t := &task{
+		id:       j.ID,
+		url:      j.URL,
+		videoID:  j.VideoID,
+		title:    j.Title,
+		artist:   "", // filled in below
+		duration: 0,
+		playlist: j.Playlist,
+		mode:     ytdlp.Mode(j.Mode),
+		fromList: j.Playlist != "",
+	}
+	// Re-probe so the library item ends up complete when the download
+	// finishes. The probe is cheap and keeps us from needing to store the
+	// artist and duration in the job.
+	if info, err := m.runner.Probe(context.Background(), j.URL, false); err == nil {
+		if info.Title != "" {
+			t.title = info.Title
+		}
+		t.artist = info.Uploader
+		t.duration = int(info.Duration)
+		if info.ID != "" {
+			t.videoID = info.ID
+		}
+	}
+	if t.title == "" {
+		t.title = t.videoID
+	}
+
+	m.jobs[idx].Status = store.StatusQueued
+	m.jobs[idx].UpdatedAt = time.Now().UTC()
+	m.active++
+	m.queue = append(m.queue, t)
+	m.persistLocked()
+	m.cond.Broadcast()
+	return nil
+}
+
+// Remove deletes a job from the list. A running job is stopped first and its
+// partial file is cleaned up.
+func (m *Manager) Remove(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	idx := m.indexOf(id)
+	if idx < 0 {
+		return fmt.Errorf("unknown job %q", id)
+	}
+
+	job := m.jobs[idx]
+	if job.Status == store.StatusRunning || job.Status == store.StatusQueued {
+		if cancel, ok := m.cancels[id]; ok {
+			cancel()
+		}
+		m.active--
+	}
+
+	// Clean up any partial file for this job.
+	outDir := filepath.Join(m.workDir, string(job.Mode), sanitise(job.Playlist))
+	cleanPartial(outDir, job.VideoID)
+
+	m.jobs = append(m.jobs[:idx], m.jobs[idx+1:]...)
+	delete(m.cancels, id)
+	delete(m.persist, id)
+	m.pruneJobsLocked()
+	m.persistLocked()
+	m.cond.Broadcast()
+	return nil
+}
+
+// PauseAll pauses every queued and running job.
+func (m *Manager) PauseAll() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for i := range m.jobs {
+		switch m.jobs[i].Status {
+		case store.StatusQueued:
+			m.jobs[i].Status = store.StatusPaused
+			m.jobs[i].UpdatedAt = time.Now().UTC()
+			m.active--
+		case store.StatusRunning:
+			if cancel, ok := m.cancels[m.jobs[i].ID]; ok {
+				cancel()
+			}
+			m.jobs[i].Status = store.StatusPaused
+			m.jobs[i].UpdatedAt = time.Now().UTC()
+			m.active--
+		}
+	}
+	m.persistLocked()
+	m.cond.Broadcast()
+	return nil
+}
+
+// CancelAll cancels every queued and running job.
+func (m *Manager) CancelAll() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for i := range m.jobs {
+		switch m.jobs[i].Status {
+		case store.StatusQueued:
+			m.jobs[i].Status = store.StatusCanceled
+			m.jobs[i].UpdatedAt = time.Now().UTC()
+			m.active--
+		case store.StatusRunning:
+			if cancel, ok := m.cancels[m.jobs[i].ID]; ok {
+				cancel()
+			}
+			// The status is set to canceled in run() once the process
+			// has stopped; mark it here too so the UI updates at once.
+			m.jobs[i].Status = store.StatusCanceled
+			m.jobs[i].UpdatedAt = time.Now().UTC()
+			m.active--
+		}
+	}
+	m.persistLocked()
+	m.cond.Broadcast()
+	return nil
+}
+
+// ClearFinished removes every completed, failed, canceled and paused job.
+func (m *Manager) ClearFinished() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	kept := make([]store.Job, 0, len(m.jobs))
+	for _, j := range m.jobs {
+		switch j.Status {
+		case store.StatusCompleted, store.StatusFailed, store.StatusCanceled, store.StatusPaused:
+			// dropped
+		default:
+			kept = append(kept, j)
+		}
+	}
+	m.jobs = kept
+	m.pruneJobsLocked()
+	m.persistLocked()
+	m.cond.Broadcast()
+	return nil
+}
+
+// cleanPartial removes any partial file for the given video in the given
+// directory.
+func cleanPartial(outDir, videoID string) {
+	if videoID == "" {
+		return
+	}
+	matches, err := filepath.Glob(filepath.Join(outDir, "*"+videoID+"]*"))
+	if err != nil {
+		return
+	}
+	for _, m := range matches {
+		if strings.HasSuffix(strings.ToLower(m), ".part") ||
+			strings.HasSuffix(strings.ToLower(m), ".ytdl") ||
+			strings.HasSuffix(strings.ToLower(m), ".temp") ||
+			strings.HasSuffix(strings.ToLower(m), ".tmp") {
+			os.Remove(m)
+		}
 	}
 }
 

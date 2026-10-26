@@ -9,6 +9,7 @@ const jobs = useJobsStore()
 const statusText: Record<Job['status'], string> = {
   queued: 'Queued',
   running: 'Downloading',
+  paused: 'Paused',
   completed: 'Completed',
   failed: 'Failed',
   canceled: 'Canceled',
@@ -36,6 +37,8 @@ function metaSegments(job: Job): string[] {
       return [statusText.failed]
     case 'canceled':
       return [statusText.canceled, formatRelative(job.createdAt)]
+    case 'paused':
+      return [statusText.paused, formatBytes(job.downloaded)]
     default:
       return [statusText[job.status], formatSpeed(job.speed), `${formatEta(job.eta)} left`]
   }
@@ -52,6 +55,35 @@ const activeCount = computed(() => jobs.activeCount)
         {{ jobs.items.length }} {{ jobs.items.length === 1 ? 'entry' : 'entries' }}
         <template v-if="activeCount"> · {{ activeCount }} active</template>
       </span>
+      <div v-if="jobs.items.length" class="sec-actions">
+        <button
+          v-if="activeCount"
+          type="button"
+          class="sec-action t-nav"
+          title="Pause all running and queued downloads"
+          @click="jobs.pauseAll()"
+        >
+          Pause all
+        </button>
+        <button
+          v-if="activeCount"
+          type="button"
+          class="sec-action t-nav"
+          title="Cancel all running and queued downloads"
+          @click="jobs.cancelAll()"
+        >
+          Cancel all
+        </button>
+        <button
+          v-if="jobs.items.some((j) => j.status !== 'queued' && j.status !== 'running')"
+          type="button"
+          class="sec-action t-nav"
+          title="Remove finished downloads from the list"
+          @click="jobs.clearFinished()"
+        >
+          Clear finished
+        </button>
+      </div>
     </header>
 
     <p v-if="jobs.error" class="notice t-meta">{{ jobs.error }}</p>
@@ -97,12 +129,42 @@ const activeCount = computed(() => jobs.activeCount)
         <button
           v-if="isActive(job)"
           type="button"
-          class="job-cancel t-nav"
+          class="job-action t-nav"
+          title="Pause download"
+          aria-label="Pause download"
+          @click="jobs.pause(job.id)"
+        >
+          ❚❚
+        </button>
+        <button
+          v-if="job.status === 'paused'"
+          type="button"
+          class="job-action t-nav"
+          title="Resume download"
+          aria-label="Resume download"
+          @click="jobs.resume(job.id)"
+        >
+          ▶
+        </button>
+        <button
+          v-if="isActive(job)"
+          type="button"
+          class="job-action t-nav job-action--danger"
           title="Cancel download"
           aria-label="Cancel download"
           @click="jobs.cancel(job.id)"
         >
           ×
+        </button>
+        <button
+          v-if="!isActive(job)"
+          type="button"
+          class="job-action t-nav"
+          title="Remove from the list"
+          aria-label="Remove from the list"
+          @click="jobs.remove(job.id)"
+        >
+          ✕
         </button>
       </li>
     </ul>
@@ -133,6 +195,27 @@ const activeCount = computed(() => jobs.activeCount)
 
 .sec-head .t-meta {
   color: var(--ink-faint);
+}
+
+.sec-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--lg);
+  flex-wrap: wrap;
+}
+
+.sec-action {
+  color: var(--ink-faint);
+  padding-bottom: 2px;
+  border-bottom: 1px solid transparent;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.sec-action:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 /* --- empty --------------------------------------------------------------- */
@@ -252,17 +335,23 @@ const activeCount = computed(() => jobs.activeCount)
   padding-top: 4px;
 }
 
-.job-cancel {
+.job-action {
   color: var(--ink-faint);
   width: 22px;
   height: 22px;
   display: grid;
   place-items: center;
+  font-family: var(--mono);
+  font-size: 10px;
   transition: color var(--dur-fast) var(--ease-out);
 }
 
-.job-cancel:hover {
+.job-action:hover {
   color: var(--accent);
+}
+
+.job-action--danger:hover {
+  color: var(--danger);
 }
 
 .notice {

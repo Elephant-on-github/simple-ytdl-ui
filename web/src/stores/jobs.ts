@@ -58,9 +58,57 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
+  async function pause(id: string): Promise<void> {
+    try {
+      await api.pauseJob(id)
+    } finally {
+      await refresh()
+    }
+  }
+
+  async function resume(id: string): Promise<void> {
+    try {
+      await api.resumeJob(id)
+    } finally {
+      await refresh()
+    }
+  }
+
+  async function remove(id: string): Promise<void> {
+    try {
+      await api.removeJob(id)
+    } finally {
+      await refresh()
+    }
+  }
+
+  async function pauseAll(): Promise<void> {
+    try {
+      await api.pauseAll()
+    } finally {
+      await refresh()
+    }
+  }
+
+  async function cancelAll(): Promise<void> {
+    try {
+      await api.cancelAll()
+    } finally {
+      await refresh()
+    }
+  }
+
+  async function clearFinished(): Promise<void> {
+    try {
+      await api.clearFinished()
+    } finally {
+      await refresh()
+    }
+  }
+
   function clear(): void {
     items.value = []
   }
 
-  return { items, error, loading, activeCount, merge, refresh, enqueue, cancel, clear }
+  return { items, error, loading, activeCount, merge, refresh, enqueue, cancel, pause, resume, remove, pauseAll, cancelAll, clearFinished, clear }
 })

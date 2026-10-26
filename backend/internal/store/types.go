@@ -26,7 +26,8 @@ type Job struct {
 	URL        string    `json:"url"`
 	VideoID    string    `json:"videoId"`
 	Mode       string    `json:"mode"`
-	Status     string    `json:"status"` // queued|running|completed|failed|canceled
+	Playlist   string    `json:"playlist"` // playlist title, empty for singles
+	Status     string    `json:"status"` // queued|running|completed|failed|canceled|paused
 	Progress   float64   `json:"progress"`
 	Downloaded int64     `json:"downloaded"`
 	Total      int64     `json:"total"`
@@ -44,4 +45,5 @@ const (
 	StatusCompleted = "completed"
 	StatusFailed    = "failed"
 	StatusCanceled  = "canceled"
+	StatusPaused    = "paused"
 )

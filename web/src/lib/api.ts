@@ -5,7 +5,7 @@
 
 export type Mode = 'video' | 'music'
 
-export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
+export type JobStatus = 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'canceled'
 
 export interface Health {
   status: string
@@ -188,6 +188,12 @@ export const api = {
   jobs: () => request<{ items: Job[] }>('/api/jobs'),
 
   cancelJob: (id: string) => request<{ ok: boolean }>(`/api/jobs/${enc(id)}/cancel`, { method: 'POST' }),
+  pauseJob: (id: string) => request<{ ok: boolean }>(`/api/jobs/${enc(id)}/pause`, { method: 'POST' }),
+  resumeJob: (id: string) => request<{ ok: boolean }>(`/api/jobs/${enc(id)}/resume`, { method: 'POST' }),
+  removeJob: (id: string) => request<{ ok: boolean }>(`/api/jobs/${enc(id)}`, { method: 'DELETE' }),
+  pauseAll: () => request<{ ok: boolean }>('/api/jobs/pause-all', { method: 'POST' }),
+  cancelAll: () => request<{ ok: boolean }>('/api/jobs/cancel-all', { method: 'POST' }),
+  clearFinished: () => request<{ ok: boolean }>('/api/jobs/finished', { method: 'DELETE' }),
 
   library: () => request<{ items: Item[] }>('/api/library'),
 

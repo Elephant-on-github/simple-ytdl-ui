@@ -84,6 +84,12 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 	s.mux.HandleFunc("POST /api/downloads", s.handleDownloads)
 	s.mux.HandleFunc("GET /api/jobs", s.handleJobs)
 	s.mux.HandleFunc("POST /api/jobs/{id}/cancel", s.handleCancel)
+	s.mux.HandleFunc("POST /api/jobs/{id}/pause", s.handlePause)
+	s.mux.HandleFunc("POST /api/jobs/{id}/resume", s.handleResume)
+	s.mux.HandleFunc("DELETE /api/jobs/{id}", s.handleRemoveJob)
+	s.mux.HandleFunc("POST /api/jobs/pause-all", s.handlePauseAll)
+	s.mux.HandleFunc("POST /api/jobs/cancel-all", s.handleCancelAll)
+	s.mux.HandleFunc("DELETE /api/jobs/finished", s.handleClearFinished)
 	s.mux.HandleFunc("GET /api/library", s.handleLibrary)
 	s.mux.HandleFunc("DELETE /api/library/{id}", s.handleDeleteItem)
 	s.mux.HandleFunc("GET /api/library/{id}/stream", s.handleStream)
@@ -567,6 +573,48 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "unknown job")
 		return
 	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handlePause(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.manager.Pause(id); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.manager.Resume(id); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleRemoveJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.manager.Remove(id); err != nil {
+		writeError(w, http.StatusNotFound, "unknown job")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handlePauseAll(w http.ResponseWriter, r *http.Request) {
+	s.manager.PauseAll()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleCancelAll(w http.ResponseWriter, r *http.Request) {
+	s.manager.CancelAll()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleClearFinished(w http.ResponseWriter, r *http.Request) {
+	s.manager.ClearFinished()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
