@@ -1,39 +1,30 @@
 services:
   app:
-    # Pulls the published image. Run `docker compose pull` first, or use
-    # `docker compose -f docker-compose.build.yml up -d` to build it locally.
     image: ghcr.io/elephant-on-github/simple-ytdl-ui:latest
     container_name: simple-ytdl-ui
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      # The state of the app: the library index, the job list, the token.
+      # State: library index, job list, Google token
       - ./data:/data
-      # The media itself. Point this at a bigger disk if you like.
+      # Media files
       - ./library:/library
-      # Optional: a YouTube session. It may be read-only — the server copies it.
+      # Optional: YouTube session (read-only is fine)
       # - ./cookies.txt:/config/cookies.txt:ro
     environment:
-      # --- server ---
       PORT: "8080"
       DATA_DIR: /data
-      # Where the downloaded files are stored. Leave it empty to keep them
-      # next to the state in DATA_DIR.
       LIBRARY_DIR: /library
       YTDLP_BIN: /usr/local/bin/yt-dlp
       FFMPEG_BIN: /usr/bin/ffmpeg
       CONCURRENT_DOWNLOADS: "2"
       DEFAULT_MODE: video
       TZ: UTC
-      # --- optional: a YouTube session, so your own playlists are listed ---
+      # --- Optional: YouTube session ---
       # YTDLP_COOKIES: /config/cookies.txt
-      # --- optional: lock the app behind a password ---
-      # AUTH_PASSWORD: "choose-something-long"
-      # --- optional: the Google sign-in (an alternative to the cookies) ---
-      # GOOGLE_CLIENT_ID: "xxxx.apps.googleusercontent.com"
-      # GOOGLE_CLIENT_SECRET: "xxxx"
-      # --- optional Google sign-in (leave unset to run without it) ---
-      # GOOGLE_CLIENT_ID: "xxxx.apps.googleusercontent.com"
-      # GOOGLE_CLIENT_SECRET: "xxxx"
-      # GOOGLE_REDIRECT_URL: "http://localhost:8080/api/auth/google/callback"
+      # --- Optional: Password lock ---
+      # AUTH_PASSWORD: your-secret-password
+      # --- Optional: Google OAuth ---
+      # GOOGLE_CLIENT_ID: your-client-id
+      # GOOGLE_CLIENT_SECRET: your-client-secret

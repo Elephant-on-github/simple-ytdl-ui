@@ -88,8 +88,8 @@ export interface Schedule {
   mode: Mode
   folder: string
   frequency: 'daily' | 'weekly' | 'monthly'
-  nextRun: string
-  createdAt: string
+  nextRun?: string
+  createdAt?: string
 }
 
 export interface DownloadRequest {

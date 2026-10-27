@@ -3,42 +3,34 @@
 package store
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 )
 
 const (
-	libraryFile = "library.json"
-	jobsFile    = "jobs.json"
-	googleFile  = "google.json"
-	cookiesFile = "cookies.txt"
+	libraryFile  = "library.json"
+	jobsFile     = "jobs.json"
+	googleFile   = "google.json"
+	cookiesFile  = "cookies.txt"
 	schedulesFile = "schedules.json"
 )
-
-// Schedule is a recurring download schedule.
-type Schedule struct {
-	ID        string    `json:"id"`
-	URL       string    `json:"url"`      // YouTube playlist URL
-	Title     string    `json:"title"`    // Playlist title (optional, fetched later)
-	Mode      string    `json:"mode"`     // "video" | "music"
-	Folder    string    `json:"folder"`   // Target output folder
-	Frequency string    `json:"frequency"` // "daily", "weekly", "monthly"
-	NextRun   time.Time `json:"nextRun"`  // Next scheduled run time
-	CreatedAt time.Time `json:"createdAt"`
-}
 
 // Store is a JSON-backed data store. It is safe for concurrent use.
 type Store struct {
 	mu  sync.RWMutex
 	dir string
 
-	items []Item
-	jobs  []Job
+	items  []Item
+	jobs   []Job
 	schedules []Schedule
 
 	googleRefreshToken string
@@ -329,7 +321,7 @@ func (s *Store) SaveCookiesFrom(path string) error {
 	return s.SaveCookies(data)
 }
 
-// ClearCookies forgets the pasted YouTube session.
+// ClearCookies forgets the stored YouTube session.
 func (s *Store) ClearCookies() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -338,6 +330,15 @@ func (s *Store) ClearCookies() error {
 		return err
 	}
 	return nil
+}
+
+// newJobID generates a unique ID for new schedules.
+func newJobID() string {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return fmt.Sprintf("job_%d", time.Now().UnixNano())
+	}
+	return "job_" + hex.EncodeToString(buf[:])
 }
 
 // Schedules returns all scheduled downloads.
@@ -383,8 +384,8 @@ func (s *Store) RemoveSchedule(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for i, s := range s.schedules {
-		if s.ID == id {
+	for i, sj := range s.schedules {
+		if sj.ID == id {
 			s.schedules = append(s.schedules[:i], s.schedules[i+1:]...)
 			return s.writeAtomic(schedulesFile, struct {
 				Schedules []Schedule `json:"schedules"`

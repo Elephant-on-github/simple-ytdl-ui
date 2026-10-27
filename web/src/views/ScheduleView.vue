@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useSchedulesStore } from '../stores/schedules'
-import type { Schedule } from '../lib/api'
 
 const schedules = useSchedulesStore()
 
@@ -22,7 +21,6 @@ async function addSchedule(): Promise<void> {
       mode: mode.value,
       folder: folder.value.trim(),
       frequency: frequency.value,
-      title: '',
     })
     url.value = ''
     folder.value = ''
@@ -41,27 +39,14 @@ async function remove(id: string): Promise<void> {
   }
 }
 
-const frequencyLabel = (f: string) => {
-  switch (f) {
-    case 'daily':
-      return 'Daily'
-    case 'weekly':
-      return 'Weekly'
-    case 'monthly':
-      return 'Monthly'
-    default:
-      return f
-  }
-}
 
-const modeLabel = (m: string) => (m === 'music' ? 'MP3' : 'Video')
 </script>
 
 <template>
   <div class="view">
     <header class="head">
       <div>
-        <p class="eyebrow">Schedule</h1>
+        <p class="eyebrow">Schedule</p>
         <h1 class="t-display head-title">Schedule Downloads</h1>
       </div>
     </header>
@@ -162,7 +147,7 @@ const modeLabel = (m: string) => (m === 'music' ? 'MP3' : 'Video')
 
     <div v-if="!schedules.items.length" class="empty">
       <span class="t-meta">No scheduled downloads yet.</span>
-    </section>
+    </div>
   </div>
 </template>
 

@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import DownloadView from '../views/DownloadView.vue'
 import LibraryView from '../views/LibraryView.vue'
 import GoogleView from '../views/GoogleView.vue'

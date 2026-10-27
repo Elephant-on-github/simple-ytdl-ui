@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { ref } from 'vue'
 import { api, type Schedule } from '../lib/api'
 
 export const useSchedulesStore = defineStore('schedules', () => {
@@ -23,7 +24,7 @@ export const useSchedulesStore = defineStore('schedules', () => {
   async function save(schedule: Schedule): Promise<void> {
     try {
       const payload = await api.saveSchedule(schedule)
-      items.value = payload.jobs ? payload.schedules : [...items.value, schedule]
+      items.value = payload.schedule ? [...items.value, payload.schedule] : items.value
       error.value = ''
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Could not save schedule'
