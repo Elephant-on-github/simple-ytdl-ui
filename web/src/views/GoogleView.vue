@@ -296,7 +296,7 @@ async function onConnected(): Promise<void> {
 }
 
 .notice--error {
-  color: var(--accent);
+  color: var(--error);
 }
 
 @media (max-width: 620px) {

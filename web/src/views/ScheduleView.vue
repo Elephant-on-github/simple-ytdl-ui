@@ -227,6 +227,10 @@ async function remove(id: string): Promise<void> {
   color: var(--ink-faint);
 }
 
+.notice--error {
+  color: var(--error);
+}
+
 .job {
   border-bottom: 1px solid var(--hairline);
   padding: var(--sp-7) 0;
@@ -307,5 +311,21 @@ async function remove(id: string): Promise<void> {
 
 .btn--danger:hover {
   color: var(--danger);
+}
+
+@media (max-width: 480px) {
+  .form {
+    max-width: 100%;
+  }
+
+  .plate-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sm);
+  }
+
+  .job {
+    gap: var(--md);
+  }
 }
 </style>

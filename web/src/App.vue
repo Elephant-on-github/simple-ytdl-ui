@@ -55,9 +55,11 @@ onUnmounted(() => {
     <span class="grain" aria-hidden="true" />
     <span class="vignette" aria-hidden="true" />
 
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <TopBar class="shell-top" />
 
-    <main class="shell-stage">
+    <main id="main-content" class="shell-stage" tabindex="-1">
       <LoginPanel v-if="session.needsLogin" />
       <RouterView v-else v-slot="{ Component }">
         <Transition name="view" mode="out-in">
@@ -85,6 +87,23 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--accent);
+  color: var(--bg);
+  padding: var(--sm) var(--md);
+  z-index: 100;
+  transition: top var(--dur-fast) var(--ease-out);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
 .shell {
   display: grid;
   grid-template-rows: auto 1fr auto;

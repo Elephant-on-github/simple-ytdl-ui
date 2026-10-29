@@ -224,8 +224,9 @@ async function clear(): Promise<void> {
   transition: border-color var(--dur-fast) var(--ease-out);
 }
 
-.paste-area:focus {
-  outline: none;
+.paste-area:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
   border-color: var(--accent);
 }
 
@@ -250,6 +251,6 @@ async function clear(): Promise<void> {
 }
 
 .session-note--error {
-  color: var(--danger);
+  color: var(--error);
 }
 </style>

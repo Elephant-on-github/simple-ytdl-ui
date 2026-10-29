@@ -48,7 +48,7 @@ const activeCount = computed(() => jobs.activeCount)
 </script>
 
 <template>
-  <section class="queue">
+  <section class="queue" aria-live="polite" aria-atomic="false">
     <header class="sec-head">
       <h2 class="t-label">Queue</h2>
       <span v-if="jobs.items.length" class="t-meta">
@@ -346,13 +346,14 @@ const activeCount = computed(() => jobs.activeCount)
 
 .job-action {
   color: var(--accent);
-  width: 22px;
-  height: 22px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   font-family: var(--mono);
   font-size: 10px;
   transition: color var(--dur-fast) var(--ease-out);
+  cursor: pointer;
 }
 
 .job-action:hover {

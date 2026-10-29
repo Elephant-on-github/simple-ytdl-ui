@@ -160,8 +160,9 @@ async function submit(): Promise<void> {
   color: var(--ink-faint);
 }
 
-.bar-input:focus {
-  outline: none;
+.bar-input:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .bar-go {

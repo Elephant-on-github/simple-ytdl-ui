@@ -12,7 +12,9 @@ const emit = defineEmits<{
 
 const broken = ref<Set<string>>(new Set())
 const confirming = ref<string | null>(null)
+const countdown = ref(3)
 let confirmTimer: ReturnType<typeof setTimeout> | undefined
+let countdownTimer: ReturnType<typeof setInterval> | undefined
 
 /** The plate number, in roman. */
 function roman(index: number): string {
@@ -30,14 +32,26 @@ function markBroken(id: string): void {
 function askRemove(item: Item): void {
   if (confirming.value === item.id) {
     clearTimeout(confirmTimer)
+    clearInterval(countdownTimer)
     confirming.value = null
+    countdown.value = 3
     emit('remove', item)
     return
   }
   confirming.value = item.id
+  countdown.value = 3
   clearTimeout(confirmTimer)
+  clearInterval(countdownTimer)
+  countdownTimer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(countdownTimer)
+    }
+  }, 1000)
   confirmTimer = setTimeout(() => {
     confirming.value = null
+    countdown.value = 3
+    clearInterval(countdownTimer)
   }, 3000)
 }
 
@@ -88,7 +102,7 @@ function open(item: Item): void {
             :aria-label="`Delete ${item.title}`"
             @click="askRemove(item)"
           >
-            {{ confirming === item.id ? 'Sure?' : 'Delete' }}
+            {{ confirming === item.id ? `Sure? (${countdown})` : 'Delete' }}
           </button>
         </div>
 
@@ -216,7 +230,8 @@ function open(item: Item): void {
 }
 
 .remove--confirm {
-  color: var(--accent);
+  color: var(--error);
+  font-weight: 600;
 }
 
 .title {

@@ -28,6 +28,22 @@
   --accent-line: rgba(212, 165, 116, 0.42);
   --roman-overlay: rgba(245, 240, 232, 0.55);
 
+  /* --- semantic status (distinct from accent so errors don't look like success) --- */
+  --error: #e07a5f;
+  --ok: #8fae8c;
+  --warn: #d4a574;
+
+  /* --- legacy aliases used by ScheduleView --- */
+  --faint: #4a4843;
+  --text: #e8e6e1;
+  --sp-4: 14px;
+  --sp-5: 18px;
+  --sp-7: 24px;
+  --r-md: 0;
+  --fs-13: 13px;
+  --hairline-strong: #8a8780;
+  --danger: #e07a5f;
+
   /* hairlines are the ink-faint colour, there is no separate one */
   --hairline: #4a4843;
 

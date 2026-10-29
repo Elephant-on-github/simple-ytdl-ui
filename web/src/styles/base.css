@@ -357,8 +357,9 @@ svg {
   border-bottom-color: var(--ink-dim);
 }
 
-.field:focus {
-  outline: none;
+.field:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
   border-bottom-color: var(--accent);
 }
 
