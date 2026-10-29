@@ -42,5 +42,15 @@ export const useSchedulesStore = defineStore('schedules', () => {
     }
   }
 
-  return { items, error, loading, refresh, save, remove }
+  async function run(id: string): Promise<void> {
+    try {
+      await api.runSchedule(id)
+      error.value = ''
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Could not run schedule'
+      throw err
+    }
+  }
+
+  return { items, error, loading, refresh, save, remove, run }
 })

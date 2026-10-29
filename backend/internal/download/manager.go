@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,6 +90,10 @@ func NewManager(runner *ytdlp.Runner, st *store.Store, workDir string, concurren
 		m.workers.Add(1)
 		go m.worker()
 	}
+
+	// Start the schedule runner.
+	go m.runSchedules()
+
 	return m
 }
 
@@ -687,6 +692,70 @@ func (m *Manager) RemoveSchedule(id string) error {
 	return m.store.RemoveSchedule(id)
 }
 
+// TriggerSchedule runs a scheduled download immediately.
+func (m *Manager) TriggerSchedule(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	schedules := m.store.Schedules()
+	var sched *store.Schedule
+	for i := range schedules {
+		if schedules[i].ID == id {
+			sched = &schedules[i]
+			break
+		}
+	}
+	if sched == nil {
+		return fmt.Errorf("unknown schedule")
+	}
+
+	// Enqueue the download. We don't hold the lock during enqueue since
+	// Enqueue acquires its own lock.
+	go func() {
+		_, err := m.Enqueue(context.Background(), sched.URL, ytdlp.Mode(sched.Mode), true)
+		if err != nil {
+			log.Printf("schedule %s trigger failed: %v", id, err)
+		}
+	}()
+
+	return nil
+}
+
+// runSchedules periodically checks for due schedules and triggers them.
+func (m *Manager) runSchedules() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		m.checkSchedules()
+	}
+}
+
+func (m *Manager) checkSchedules() {
+	schedules := m.store.Schedules()
+	now := time.Now()
+
+	for _, sched := range schedules {
+		if sched.NextRun.IsZero() || sched.NextRun.After(now) {
+			continue
+		}
+
+		// Trigger the download.
+		_, err := m.Enqueue(context.Background(), sched.URL, ytdlp.Mode(sched.Mode), true)
+		if err != nil {
+			log.Printf("schedule %s run failed: %v", sched.ID, err)
+			continue
+		}
+
+		// Update NextRun based on frequency.
+		nextRun := nextRunTime(sched.Frequency, now)
+		sched.NextRun = nextRun
+		if err := m.store.SaveSchedule(sched); err != nil {
+			log.Printf("could not update schedule %s: %v", sched.ID, err)
+		}
+	}
+}
+
 // ClearFinished removes every completed, failed, canceled and paused job.
 func (m *Manager) ClearFinished() error {
 	m.mu.Lock()
@@ -897,5 +966,19 @@ func mimeFor(path string) string {
 		return "image/webp"
 	default:
 		return "application/octet-stream"
+	}
+}
+
+// nextRunTime computes the next run time based on frequency.
+func nextRunTime(frequency string, from time.Time) time.Time {
+	switch frequency {
+	case "daily":
+		return from.Add(24 * time.Hour)
+	case "weekly":
+		return from.Add(7 * 24 * time.Hour)
+	case "monthly":
+		return from.AddDate(0, 1, 0)
+	default:
+		return from.Add(24 * time.Hour)
 	}
 }

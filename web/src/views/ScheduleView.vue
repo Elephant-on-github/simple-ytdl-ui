@@ -13,6 +13,10 @@ const loading = ref(false)
 
 async function addSchedule(): Promise<void> {
   error.value = ''
+  if (!url.value.trim()) {
+    error.value = 'URL is required'
+    return
+  }
   loading.value = true
   try {
     await schedules.save({
@@ -36,6 +40,14 @@ async function remove(id: string): Promise<void> {
     await schedules.remove(id)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Could not remove schedule'
+  }
+}
+
+async function runNow(id: string): Promise<void> {
+  try {
+    await schedules.run(id)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Could not run schedule'
   }
 }
 
@@ -130,17 +142,28 @@ async function remove(id: string): Promise<void> {
             <div class="job-item">
               <span class="pl-item-time t-meta tnum">{{ item.frequency }}</span>
               <span class="pl-item-channel t-meta tnum">{{ item.folder || '(default)' }}</span>
+              <span v-if="item.nextRun" class="pl-item-channel t-meta tnum">Next: {{ new Date(item.nextRun).toLocaleString() }}</span>
             </div>
           </div>
 
-          <button
-            type="button"
-            class="job-cancel"
-            :aria-label="`Remove ${item.id}`"
-            @click="remove(item.id)"
-          >
-            ×
-          </button>
+          <div class="job-actions">
+            <button
+              type="button"
+              class="job-run t-nav"
+              :aria-label="`Run ${item.id} now`"
+              @click="runNow(item.id)"
+            >
+              Run now
+            </button>
+            <button
+              type="button"
+              class="job-cancel"
+              :aria-label="`Remove ${item.id}`"
+              @click="remove(item.id)"
+            >
+              ×
+            </button>
+          </div>
         </li>
       </ul>
     </section>
@@ -310,6 +333,36 @@ async function remove(id: string): Promise<void> {
 }
 
 .btn--danger:hover {
+  color: var(--danger);
+}
+
+.job-actions {
+  display: flex;
+  gap: var(--sm);
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.job-run {
+  color: var(--accent);
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: color var(--dur-fast) var(--ease-out);
+  cursor: pointer;
+}
+
+.job-run:hover {
+  color: var(--accent);
+}
+
+.job-cancel {
+  color: var(--ink-faint);
+  transition: color var(--dur-fast) var(--ease-out);
+  cursor: pointer;
+}
+
+.job-cancel:hover {
   color: var(--danger);
 }
 

@@ -97,6 +97,7 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 	s.mux.HandleFunc("GET /api/library/{id}/cover", s.handleCover)
 	s.mux.HandleFunc("GET /api/schedules", s.handleSchedules)
 	s.mux.HandleFunc("POST /api/schedules", s.handleCreateSchedule)
+	s.mux.HandleFunc("POST /api/schedules/{id}/run", s.handleRunSchedule)
 	s.mux.HandleFunc("DELETE /api/schedules/{id}", s.handleRemoveSchedule)
 
 	return s
@@ -647,12 +648,40 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate required fields.
+	if strings.TrimSpace(body.URL) == "" {
+		writeError(w, http.StatusBadRequest, "url is required")
+		return
+	}
+	if _, _, _, err := ytdlp.ClassifyURL(body.URL); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	mode := body.Mode
+	if mode == "" {
+		mode = string(ytdlp.ModeVideo)
+	}
+	if _, err := ytdlp.ParseMode(mode); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	freq := body.Frequency
+	if freq == "" {
+		freq = "daily"
+	}
+	if freq != "daily" && freq != "weekly" && freq != "monthly" {
+		writeError(w, http.StatusBadRequest, "frequency must be daily, weekly, or monthly")
+		return
+	}
+
 	sched := store.Schedule{
-		URL:       body.URL,
-		Mode:      body.Mode,
-		Folder:    body.Folder,
-		Frequency: body.Frequency,
-		Title:     body.Title,
+		URL:       strings.TrimSpace(body.URL),
+		Mode:      mode,
+		Folder:    strings.TrimSpace(body.Folder),
+		Frequency: freq,
+		Title:     strings.TrimSpace(body.Title),
 		NextRun:   time.Now(), // schedule for now
 	}
 
@@ -668,6 +697,16 @@ func (s *Server) handleRemoveSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.manager.RemoveSchedule(id); err != nil {
 		writeError(w, http.StatusNotFound, "unknown schedule")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleRunSchedule triggers a scheduled download immediately.
+func (s *Server) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.manager.TriggerSchedule(id); err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})

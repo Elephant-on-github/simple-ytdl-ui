@@ -214,6 +214,8 @@ export const api = {
     }),
   removeSchedule: (id: string) =>
     request<{ ok: boolean }>(`/api/schedules/${enc(id)}`, { method: 'DELETE' }),
+  runSchedule: (id: string) =>
+    request<{ ok: boolean }>(`/api/schedules/${enc(id)}/run`, { method: 'POST' }),
 
   library: () => request<{ items: Item[] }>('/api/library'),
 
