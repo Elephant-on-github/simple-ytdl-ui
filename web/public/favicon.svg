@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#000000" />
+  <!-- corner ticks -->
+  <path d="M2 2 L2 8 M2 2 L8 2" stroke="#4a4843" stroke-width="1" fill="none" />
+  <path d="M30 2 L30 8 M30 2 L24 2" stroke="#4a4843" stroke-width="1" fill="none" />
+  <path d="M2 30 L2 24 M2 30 L8 30" stroke="#4a4843" stroke-width="1" fill="none" />
+  <path d="M30 30 L30 24 M30 30 L24 30" stroke="#4a4843" stroke-width="1" fill="none" />
+  <!-- play triangle -->
+  <polygon points="12,9 12,23 23,16" fill="#d4a574" />
+</svg>

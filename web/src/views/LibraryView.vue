@@ -27,6 +27,16 @@ function playPlaylist(items: Item[]): void {
   // Play the first track; the player can queue the rest
   player.load(items[0])
 }
+
+async function removePlaylist(items: Item[]): Promise<void> {
+  for (const item of items) {
+    try {
+      await library.remove(item.id)
+    } catch (err) {
+      library.error = err instanceof Error ? err.message : 'Could not delete the file.'
+    }
+  }
+}
 </script>
 
 <template>
@@ -60,6 +70,7 @@ function playPlaylist(items: Item[]): void {
       @play="player.load($event)"
       @playPlaylist="playPlaylist"
       @remove="remove"
+      @removePlaylist="removePlaylist"
     />
   </div>
 </template>

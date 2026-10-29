@@ -9,6 +9,7 @@ const emit = defineEmits<{
   (e: 'play', item: Item): void
   (e: 'remove', item: Item): void
   (e: 'playPlaylist', items: Item[]): void
+  (e: 'removePlaylist', items: Item[]): void
 }>()
 
 const broken = ref<Set<string>>(new Set())
@@ -105,6 +106,32 @@ function askRemove(item: Item): void {
   }, 3000)
 }
 
+function askRemovePlaylist(group: Group): void {
+  if (confirming.value === group.key) {
+    clearTimeout(confirmTimer)
+    clearInterval(countdownTimer)
+    confirming.value = null
+    countdown.value = 3
+    emit('removePlaylist', group.items)
+    return
+  }
+  confirming.value = group.key
+  countdown.value = 3
+  clearTimeout(confirmTimer)
+  clearInterval(countdownTimer)
+  countdownTimer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(countdownTimer)
+    }
+  }, 1000)
+  confirmTimer = setTimeout(() => {
+    confirming.value = null
+    countdown.value = 3
+    clearInterval(countdownTimer)
+  }, 3000)
+}
+
 /** A video download is watched, not played in the audio bar. */
 function isVideo(item: Item): boolean {
   return (item.mime ?? '').startsWith('video/')
@@ -134,7 +161,7 @@ function openGroup(group: Group): void {
         :class="{ 'art--broken': group.coverIds.every((id) => broken.has(id)) }"
         role="button"
         tabindex="0"
-        :aria-label="`Play ${group.title}`"
+        :aria-label="`Play ${group.title}${group.kind === 'playlist' ? ', ' + group.items.length + ' tracks' : ''}, ${formatDuration(group.duration)}`"
         @click="openGroup(group)"
         @keydown.enter="openGroup(group)"
         @keydown.space.prevent="openGroup(group)"
@@ -151,7 +178,7 @@ function openGroup(group: Group): void {
             :key="id"
             class="compound-cell"
             :src="api.coverUrl(id)"
-            :alt="group.title"
+            :alt="''"
             loading="lazy"
             @error="markBroken(id)"
           />
@@ -191,17 +218,20 @@ function openGroup(group: Group): void {
           <button
             v-else
             type="button"
-            class="remove t-nav"
+            class="remove t-nav remove--playlist"
+            :class="{ 'remove--confirm': confirming === group.key }"
             :aria-label="`Delete playlist ${group.title}`"
-            @click.stop="emit('remove', group.items[0])"
+            @click.stop="askRemovePlaylist(group)"
           >
-            Delete all
+            {{ confirming === group.key ? `Sure? (${countdown})` : 'Delete all' }}
           </button>
         </div>
 
         <h3 class="title t-body">{{ group.title }}</h3>
         <p class="artist t-meta truncate">
-          <template v-if="group.kind === 'playlist'">{{ group.items.length }} tracks</template>
+          <template v-if="group.kind === 'playlist'">
+            {{ group.items[0]?.title }} · {{ group.items.length }} {{ group.items.length === 1 ? 'track' : 'tracks' }}
+          </template>
           <template v-else>
             <template v-if="group.items[0].artist">{{ group.items[0].artist }}</template>
             <template v-else>Unknown artist</template>
@@ -240,6 +270,10 @@ function openGroup(group: Group): void {
 .art:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+.art:active {
+  transform: scale(0.97);
 }
 
 .art-img {
@@ -385,6 +419,14 @@ function openGroup(group: Group): void {
 .remove--confirm {
   color: var(--error);
   font-weight: 600;
+}
+
+.remove--playlist {
+  color: var(--error);
+}
+
+.remove--playlist:hover {
+  color: var(--error);
 }
 
 .title {
