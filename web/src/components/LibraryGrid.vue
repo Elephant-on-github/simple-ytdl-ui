@@ -15,6 +15,7 @@ const emit = defineEmits<{
 const broken = ref<Set<string>>(new Set())
 const confirming = ref<string | null>(null)
 const countdown = ref(3)
+const expanded = ref<Set<string>>(new Set())
 let confirmTimer: ReturnType<typeof setTimeout> | undefined
 let countdownTimer: ReturnType<typeof setInterval> | undefined
 
@@ -106,6 +107,16 @@ function askRemove(item: Item): void {
   }, 3000)
 }
 
+function toggleExpand(key: string): void {
+  const next = new Set(expanded.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  expanded.value = next
+}
+
 function askRemovePlaylist(group: Group): void {
   if (confirming.value === group.key) {
     clearTimeout(confirmTimer)
@@ -135,6 +146,14 @@ function askRemovePlaylist(group: Group): void {
 /** A video download is watched, not played in the audio bar. */
 function isVideo(item: Item): boolean {
   return (item.mime ?? '').startsWith('video/')
+}
+
+function openSingle(item: Item): void {
+  if (isVideo(item)) {
+    window.open(api.streamUrl(item.id), '_blank', 'noopener')
+    return
+  }
+  emit('play', item)
 }
 
 function openGroup(group: Group): void {
@@ -237,7 +256,43 @@ function openGroup(group: Group): void {
             <template v-else>Unknown artist</template>
           </template>
         </p>
+
+        <button
+          v-if="group.kind === 'playlist'"
+          type="button"
+          class="step plate-expand t-nav"
+          @click.stop="toggleExpand(group.key)"
+        >
+          {{ expanded.has(group.key) ? 'Collapse' : 'Show tracks' }}
+          <span aria-hidden="true">{{ expanded.has(group.key) ? '↑' : '↓' }}</span>
+        </button>
       </div>
+
+      <ul v-if="group.kind === 'playlist' && expanded.has(group.key)" class="track-list">
+        <li
+          v-for="item in group.items"
+          :key="item.id"
+          class="track-row"
+          role="button"
+          tabindex="0"
+          :aria-label="`Play ${item.title}`"
+          @click="openSingle(item)"
+          @keydown.enter="openSingle(item)"
+          @keydown.space.prevent="openSingle(item)"
+        >
+          <span class="track-num t-meta tnum">{{ group.items.indexOf(item) + 1 }}</span>
+          <span class="track-title t-body truncate">{{ item.title }}</span>
+          <span class="track-dur t-meta tnum">{{ formatDuration(item.duration) }}</span>
+          <button
+            type="button"
+            class="track-remove t-nav"
+            :aria-label="`Delete ${item.title}`"
+            @click.stop="askRemove(item)"
+          >
+            {{ confirming === item.id ? `Sure? (${countdown})` : '×' }}
+          </button>
+        </li>
+      </ul>
     </li>
   </ul>
 </template>
@@ -440,5 +495,72 @@ function openGroup(group: Group): void {
 
 .artist {
   color: var(--ink-faint);
+}
+
+/* --- expanded track list ------------------------------------------------- */
+
+.track-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--hairline);
+  margin-top: var(--lg);
+}
+
+.track-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  align-items: center;
+  gap: var(--md);
+  padding: var(--sm) 0;
+  border-bottom: 1px solid var(--hairline);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.track-row:hover {
+  background: var(--plate-raised);
+}
+
+.track-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.track-num {
+  color: var(--ink-faint);
+  text-align: right;
+}
+
+.track-title {
+  color: var(--ink);
+  min-width: 0;
+}
+
+.track-dur {
+  color: var(--ink-faint);
+}
+
+.track-remove {
+  color: var(--ink-faint);
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.track-remove:hover {
+  color: var(--error);
+}
+
+.plate-expand {
+  margin-top: var(--sm);
+  align-self: flex-start;
+  color: var(--ink-dim);
+}
+
+.plate-expand:hover {
+  color: var(--accent);
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { api } from '../lib/api'
 import { usePlayerStore } from '../stores/player'
 import { formatDuration } from '../lib/format'
@@ -67,8 +67,12 @@ function onDurationChange(): void {
 }
 
 function onEnded(): void {
-  player.pause()
-  player.currentTime = player.duration
+  if (player.hasNext) {
+    player.next()
+  } else {
+    player.pause()
+    player.currentTime = player.duration
+  }
 }
 
 function onSeek(event: Event): void {
@@ -80,6 +84,67 @@ function onSeek(event: Event): void {
 function onVolume(event: Event): void {
   player.setVolume(Number((event.target as HTMLInputElement).value))
 }
+
+// --- Media Session API: show cover art + controls in OS/browser media controls ---
+function updateMediaSession(): void {
+  if (!('mediaSession' in navigator)) return
+  const item = player.current
+  if (!item) {
+    navigator.mediaSession.metadata = null
+    return
+  }
+  const artwork: MediaImage[] = []
+  const coverUrl = api.coverUrl(item.id)
+  if (coverUrl) {
+    artwork.push(
+      { src: coverUrl, sizes: '96x96', type: 'image/jpeg' },
+      { src: coverUrl, sizes: '128x128', type: 'image/jpeg' },
+      { src: coverUrl, sizes: '256x256', type: 'image/jpeg' },
+      { src: coverUrl, sizes: '512x512', type: 'image/jpeg' },
+    )
+  }
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: item.title,
+    artist: item.artist || 'Unknown artist',
+    album: item.playlist || 'simple-ytdl-ui',
+    artwork,
+  })
+}
+
+function setupMediaSessionActions(): void {
+  if (!('mediaSession' in navigator)) return
+  navigator.mediaSession.setActionHandler('play', () => player.play())
+  navigator.mediaSession.setActionHandler('pause', () => player.pause())
+  navigator.mediaSession.setActionHandler('previoustrack', () => player.prev())
+  navigator.mediaSession.setActionHandler('nexttrack', () => player.next())
+  navigator.mediaSession.setActionHandler('seekto', (details) => {
+    if (details.seekTime != null) {
+      player.seek(details.seekTime)
+      if (mediaEl.value) mediaEl.value.currentTime = details.seekTime
+    }
+  })
+  navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+    const skip = details.seekOffset || 10
+    const t = Math.max(0, (mediaEl.value?.currentTime ?? 0) - skip)
+    player.seek(t)
+    if (mediaEl.value) mediaEl.value.currentTime = t
+  })
+  navigator.mediaSession.setActionHandler('seekforward', (details) => {
+    const skip = details.seekOffset || 10
+    const t = Math.min(player.duration, (mediaEl.value?.currentTime ?? 0) + skip)
+    player.seek(t)
+    if (mediaEl.value) mediaEl.value.currentTime = t
+  })
+}
+
+watch(() => player.current, updateMediaSession, { immediate: true })
+watch(() => player.playing, (v) => {
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.playbackState = v ? 'playing' : 'paused'
+  }
+})
+
+onMounted(setupMediaSessionActions)
 </script>
 
 <template>
@@ -113,6 +178,19 @@ function onVolume(event: Event): void {
 
         <div class="pb-center">
           <button
+            v-if="player.queueLength > 1"
+            type="button"
+            class="pb-skip"
+            :disabled="!player.hasPrev"
+            aria-label="Previous track"
+            @click="player.prev()"
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M4 3.4v9.2M12.4 3.4 5 8l7.4 4.6V3.4Z" fill="currentColor" />
+            </svg>
+          </button>
+
+          <button
             type="button"
             class="pb-play"
             :aria-label="player.playing ? 'Pause' : 'Play'"
@@ -123,6 +201,19 @@ function onVolume(event: Event): void {
             </svg>
             <svg v-else width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M5 3.4 12.4 8 5 12.6V3.4Z" fill="currentColor" />
+            </svg>
+          </button>
+
+          <button
+            v-if="player.queueLength > 1"
+            type="button"
+            class="pb-skip"
+            :disabled="!player.hasNext"
+            aria-label="Next track"
+            @click="player.next()"
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M12 3.4v9.2M3.6 3.4 11 8 3.6 12.6V3.4Z" fill="currentColor" />
             </svg>
           </button>
 
@@ -142,6 +233,9 @@ function onVolume(event: Event): void {
 
           <span class="pb-time t-meta tnum">
             {{ formatDuration(player.currentTime) }} / {{ formatDuration(player.duration) }}
+          </span>
+          <span v-if="player.queueLength > 1" class="pb-queue t-meta tnum">
+            {{ player.queueIndex + 1 }} / {{ player.queueLength }}
           </span>
         </div>
 
@@ -293,6 +387,26 @@ function onVolume(event: Event): void {
     border-color var(--dur-fast) var(--ease-out);
 }
 
+.pb-skip {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  color: var(--accent);
+  transition: color var(--dur-fast) var(--ease-out);
+  cursor: pointer;
+}
+
+.pb-skip:disabled {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.pb-skip:hover:not(:disabled) {
+  color: var(--accent);
+}
+
 .pb-play:hover {
   color: var(--accent);
   border-color: var(--accent-line);
@@ -308,6 +422,12 @@ function onVolume(event: Event): void {
 .pb-time {
   color: var(--ink-dim);
   flex: none;
+}
+
+.pb-queue {
+  color: var(--accent);
+  flex: none;
+  margin-left: var(--sm);
 }
 
 /* The range is a hairline rule that fills. */

@@ -24,8 +24,8 @@ async function remove(item: Item): Promise<void> {
 
 function playPlaylist(items: Item[]): void {
   if (items.length === 0) return
-  // Play the first track; the player can queue the rest
-  player.load(items[0])
+  // Load the whole playlist as a queue
+  player.loadQueue(items)
 }
 
 async function removePlaylist(items: Item[]): Promise<void> {
