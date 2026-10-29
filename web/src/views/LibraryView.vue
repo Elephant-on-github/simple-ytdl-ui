@@ -21,6 +21,12 @@ async function remove(item: Item): Promise<void> {
     library.error = err instanceof Error ? err.message : 'Could not delete the file.'
   }
 }
+
+function playPlaylist(items: Item[]): void {
+  if (items.length === 0) return
+  // Play the first track; the player can queue the rest
+  player.load(items[0])
+}
 </script>
 
 <template>
@@ -52,6 +58,7 @@ async function remove(item: Item): Promise<void> {
       v-else
       :items="library.items"
       @play="player.load($event)"
+      @playPlaylist="playPlaylist"
       @remove="remove"
     />
   </div>
