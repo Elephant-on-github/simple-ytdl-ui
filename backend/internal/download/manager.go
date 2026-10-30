@@ -41,6 +41,10 @@ type Manager struct {
 
 	schedDone chan struct{} // closed to stop the schedule runner
 
+	// OnJobChange is called (best-effort) when the job list changes, so the
+	// server can push the change to connected SSE clients.
+	OnJobChange func()
+
 	// The job list is written once a second at most. Progress arrives far
 	// more often, and an fsync for every line would serialise the whole
 	// manager — including the HTTP polls — behind disk I/O.
@@ -288,6 +292,9 @@ func (m *Manager) enqueueEntries(mode ytdlp.Mode, entries []ytdlp.Info, playlist
 	m.pruneJobsLocked()
 	m.persistLocked()
 	m.queue = append(m.queue, toQueue...)
+	if m.OnJobChange != nil {
+		go m.OnJobChange()
+	}
 	m.cond.Broadcast()
 	return out, nil
 }
@@ -448,6 +455,9 @@ func (m *Manager) run(t *task) {
 	m.active--
 	m.persistLocked()
 	m.cond.Broadcast()
+	if m.OnJobChange != nil {
+		go m.OnJobChange()
+	}
 }
 
 // onProgress records the progress of a running download.

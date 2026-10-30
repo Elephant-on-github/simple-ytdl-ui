@@ -411,7 +411,7 @@ func (s *Store) ClaimSchedule(id string, now time.Time) (Schedule, bool, error) 
 		}
 		return sched, true, nil
 	}
-	return Schedule{}, false, fmt.Errorf("unknown schedule %q", id)
+	return Schedule{}, false, fmt.Errorf("%w %q", ErrUnknownSchedule, id)
 }
 
 // NextRunTime computes the next run time based on frequency.
@@ -428,6 +428,9 @@ func NextRunTime(frequency string, from time.Time) time.Time {
 	}
 }
 
+// ErrUnknownSchedule is returned when a schedule cannot be found.
+var ErrUnknownSchedule = errors.New("unknown schedule")
+
 // RemoveSchedule removes a scheduled download. It reports a miss honestly so
 // the caller can answer 404 instead of a lying 200.
 func (s *Store) RemoveSchedule(id string) error {
@@ -442,5 +445,5 @@ func (s *Store) RemoveSchedule(id string) error {
 			}{Schedules: s.schedules}, 0o644)
 		}
 	}
-	return fmt.Errorf("unknown schedule %q", id)
+	return fmt.Errorf("%w %q", ErrUnknownSchedule, id)
 }

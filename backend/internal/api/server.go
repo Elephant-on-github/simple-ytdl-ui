@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -46,7 +47,45 @@ type Server struct {
 	states map[string]authState
 	cached *youtube.Client
 
+	events *eventHub
+
 	mux *http.ServeMux
+}
+
+// eventHub broadcasts changes to all connected SSE clients so that multiple
+// browser sessions stay in sync without polling.
+type eventHub struct {
+	mu      sync.Mutex
+	clients map[chan string]struct{}
+}
+
+func newEventHub() *eventHub {
+	return &eventHub{clients: make(map[chan string]struct{})}
+}
+
+func (h *eventHub) subscribe() chan string {
+	ch := make(chan string, 16)
+	h.mu.Lock()
+	h.clients[ch] = struct{}{}
+	h.mu.Unlock()
+	return ch
+}
+
+func (h *eventHub) unsubscribe(ch chan string) {
+	h.mu.Lock()
+	delete(h.clients, ch)
+	h.mu.Unlock()
+}
+
+func (h *eventHub) broadcast(eventType string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for ch := range h.clients {
+		select {
+		case ch <- eventType:
+		default:
+		}
+	}
 }
 
 // authState is a one time OAuth state value. It remembers where the browser
@@ -65,6 +104,7 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 		yt:      yt,
 		auth:    auth.New(cfg.AuthPassword),
 		states:  map[string]authState{},
+		events:  newEventHub(),
 		oauth: &youtube.OAuth{
 			ClientID:     cfg.GoogleClientID,
 			ClientSecret: cfg.GoogleClientSecret,
@@ -72,6 +112,9 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 		},
 		mux: http.NewServeMux(),
 	}
+
+	// Push job changes to connected SSE clients.
+	mgr.OnJobChange = func() { s.events.broadcast("jobs") }
 
 	s.mux.HandleFunc("GET /api/health", s.handleHealth)
 	s.mux.HandleFunc("GET /api/config", s.handleConfig)
@@ -95,6 +138,7 @@ func New(cfg config.Config, st *store.Store, mgr *download.Manager, yt *youtube.
 	s.mux.HandleFunc("DELETE /api/library/{id}", s.handleDeleteItem)
 	s.mux.HandleFunc("GET /api/library/{id}/stream", s.handleStream)
 	s.mux.HandleFunc("GET /api/library/{id}/cover", s.handleCover)
+	s.mux.HandleFunc("GET /api/events", s.handleEvents)
 	s.mux.HandleFunc("GET /api/schedules", s.handleSchedules)
 	s.mux.HandleFunc("POST /api/schedules", s.handleCreateSchedule)
 	s.mux.HandleFunc("POST /api/schedules/{id}/run", s.handleRunSchedule)
@@ -213,6 +257,37 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":  "ok",
 		"version": Version,
 	})
+}
+
+// handleEvents streams server-sent events so multiple browser sessions stay
+// in sync. Each event is a short type name ("jobs", "library", "schedules");
+// the client re-fetches the relevant endpoint when it arrives.
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	ch := s.events.subscribe()
+	defer s.events.unsubscribe(ch)
+
+	fmt.Fprintf(w, "event: ready\ndata: {}\n\n")
+	flusher.Flush()
+
+	for {
+		select {
+		case ev := <-ch:
+			fmt.Fprintf(w, "event: %s\ndata: {}\n\n", ev)
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
@@ -585,6 +660,7 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.events.broadcast("jobs")
 	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
 }
 
@@ -602,6 +678,7 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "unknown job")
 		return
 	}
+	s.events.broadcast("jobs")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -611,6 +688,7 @@ func (s *Server) handlePause(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.events.broadcast("jobs")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -620,6 +698,7 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.events.broadcast("jobs")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -629,26 +708,31 @@ func (s *Server) handleRemoveJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "unknown job")
 		return
 	}
+	s.events.broadcast("jobs")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handlePauseAll(w http.ResponseWriter, r *http.Request) {
 	s.manager.PauseAll()
+	s.events.broadcast("jobs")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleResumeAll(w http.ResponseWriter, r *http.Request) {
 	s.manager.ResumeAll()
+	s.events.broadcast("jobs")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleCancelAll(w http.ResponseWriter, r *http.Request) {
 	s.manager.CancelAll()
+	s.events.broadcast("jobs")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleClearFinished(w http.ResponseWriter, r *http.Request) {
 	s.manager.ClearFinished()
+	s.events.broadcast("jobs")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -714,6 +798,7 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.events.broadcast("schedules")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "schedule": saved})
 }
 
@@ -721,9 +806,14 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRemoveSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.manager.RemoveSchedule(id); err != nil {
-		writeError(w, http.StatusNotFound, "unknown schedule")
+		if errors.Is(err, store.ErrUnknownSchedule) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.events.broadcast("schedules")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -731,13 +821,15 @@ func (s *Server) handleRemoveSchedule(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.manager.TriggerSchedule(id); err != nil {
-		if errors.Is(err, download.ErrUnknownSchedule) {
+		if errors.Is(err, store.ErrUnknownSchedule) {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	s.events.broadcast("schedules")
+	s.events.broadcast("jobs")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -778,6 +870,7 @@ func (s *Server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.events.broadcast("library")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

@@ -8,13 +8,22 @@ import { setUnauthorizedHandler } from './lib/api'
 import { usePlayerStore } from './stores/player'
 import { useSessionStore } from './stores/session'
 import { useModeStore } from './stores/mode'
+import { useJobsStore } from './stores/jobs'
+import { useLibraryStore } from './stores/library'
+import { useSchedulesStore } from './stores/schedules'
 
 const player = usePlayerStore()
 const session = useSessionStore()
 const mode = useModeStore()
+const jobs = useJobsStore()
+const library = useLibraryStore()
+const schedules = useSchedulesStore()
 const route = useRoute()
 const router = useRouter()
 const hasPlayer = computed(() => player.isOpen)
+
+// Keep every session in sync with the server via server-sent events.
+let eventSource: EventSource | null = null
 
 /* The footbar carries a live UTC clock, the way a studio page would. */
 const clock = ref('')
@@ -33,6 +42,18 @@ onMounted(() => {
   void session.refresh()
   tick()
   timer = setInterval(tick, 1000)
+
+  // Subscribe to server-sent events so multiple browser sessions stay in sync.
+  if (typeof EventSource !== 'undefined') {
+    eventSource = new EventSource('/api/events')
+    eventSource.addEventListener('jobs', () => { void jobs.refresh() })
+    eventSource.addEventListener('library', () => { void library.refresh() })
+    eventSource.addEventListener('schedules', () => { void schedules.refresh() })
+    eventSource.addEventListener('ready', () => { /* connection established */ })
+    eventSource.onerror = () => {
+      // EventSource auto-reconnects; nothing to do here.
+    }
+  }
   // A refused request means the session is gone: show the login again.
   setUnauthorizedHandler(() => {
     session.authenticated = false
@@ -46,6 +67,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  if (eventSource) eventSource.close()
   setUnauthorizedHandler(null)
 })
 </script>
