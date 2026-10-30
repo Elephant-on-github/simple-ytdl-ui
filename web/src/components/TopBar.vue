@@ -18,7 +18,6 @@ const activeName = computed(() => String(route.name ?? 'download'))
   <header class="topbar">
     <RouterLink to="/" class="wordmark" aria-label="simple-ytdl-ui">
       <span class="wordmark-text">Simple-Ytdl</span>
-      <span class="wordmark-coord t-nav">51°30′N 0°07′W</span>
     </RouterLink>
 
     <span class="edition t-nav">Edition 01 — Self-Hosted</span>
