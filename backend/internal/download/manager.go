@@ -274,6 +274,7 @@ func (m *Manager) enqueueEntries(mode ytdlp.Mode, entries []ytdlp.Info, playlist
 			VideoID:   t.videoID,
 			Mode:      string(mode),
 			Playlist:  playlistTitle,
+			Folder:    t.folder,
 			Status:    store.StatusQueued,
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -502,6 +503,7 @@ func (m *Manager) addItemLocked(t *task, path string) {
 		Mode:      string(t.mode),
 		SourceURL: t.url,
 		Playlist:  t.playlist,
+		Folder:    t.folder,
 		AddedAt:   time.Now().UTC(),
 	}
 	m.store.AddItem(item)
@@ -701,9 +703,15 @@ func (m *Manager) Remove(id string) error {
 		}
 	}
 
-	// Clean up any partial file for this job.
-	outDir := filepath.Join(m.workDir, string(job.Mode), sanitise(job.Playlist))
-	cleanPartial(outDir, job.VideoID)
+	// Clean up any partial file for this job. A schedule with a folder
+	// override downloaded into a different directory, so check both.
+	outDirs := []string{filepath.Join(m.workDir, string(job.Mode), sanitise(job.Playlist))}
+	if job.Folder != "" {
+		outDirs = append(outDirs, filepath.Join(m.workDir, string(job.Mode), sanitise(job.Folder)))
+	}
+	for _, outDir := range outDirs {
+		cleanPartial(outDir, job.VideoID)
+	}
 
 	m.jobs = append(m.jobs[:idx], m.jobs[idx+1:]...)
 	delete(m.cancels, id)
@@ -848,15 +856,20 @@ func (m *Manager) TriggerSchedule(id string) error {
 		return fmt.Errorf("%w %q", ErrUnknownSchedule, id)
 	}
 
-	// Advance NextRun first so a duplicate trigger doesn't fire again immediately.
-	sched.NextRun = nextRunTime(sched.Frequency, time.Now())
-	if _, err := m.store.SaveSchedule(sched); err != nil {
+	// Atomically claim the slot so a concurrent tick can't double-fire.
+	claimed, ok, err := m.store.ClaimSchedule(sched.ID, time.Now())
+	if err != nil {
 		return err
+	}
+	if !ok {
+		// Already claimed by the runner; still run it on demand, but don't
+		// advance NextRun again.
+		claimed = sched
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	_, err := m.Enqueue(ctx, sched.URL, ytdlp.Mode(sched.Mode), true, sched.Folder)
+	_, err = m.Enqueue(ctx, claimed.URL, ytdlp.Mode(claimed.Mode), true, claimed.Folder)
 	return err
 }
 
@@ -893,23 +906,24 @@ func (m *Manager) checkSchedules() {
 			continue
 		}
 
-		// Claim NextRun before enqueueing so a duplicate trigger (or a crash
-		// between Enqueue and SaveSchedule) doesn't fire again immediately.
-		sched.NextRun = nextRunTime(sched.Frequency, now)
-		if _, err := m.store.SaveSchedule(sched); err != nil {
+		// Atomically claim the slot so a manual "Run now" racing the 30s
+		// tick can't double-enqueue the same due schedule.
+		claimed, ok, err := m.store.ClaimSchedule(sched.ID, now)
+		if err != nil {
 			log.Printf("schedule %s: could not claim next run: %v", sched.ID, err)
+			continue
+		}
+		if !ok {
+			// Another caller already claimed it.
 			continue
 		}
 
 		// Enqueue with a deadline so one hung probe can't stall every schedule.
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		_, err := m.Enqueue(ctx, sched.URL, ytdlp.Mode(sched.Mode), true, sched.Folder)
+		_, err = m.Enqueue(ctx, sched.URL, ytdlp.Mode(sched.Mode), true, sched.Folder)
 		cancel()
 		if err != nil {
-			log.Printf("schedule %s run failed: %v", sched.ID, err)
-			// NextRun was already advanced to the next period, so a failed
-			// run does not retry until then. TriggerSchedule (the manual
-			// "Run now" button) is the way to force an immediate retry.
+			log.Printf("schedule %s run failed: %v", claimed.ID, err)
 			continue
 		}
 	}
@@ -1019,7 +1033,7 @@ func (m *Manager) Close() {
 	}()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(2 * time.Second):
 	}
 
 	// Nothing is running now, so the final state is worth keeping: flush the
@@ -1028,7 +1042,7 @@ func (m *Manager) Close() {
 	close(m.persistDone)
 	select {
 	case <-m.persistClosed:
-	case <-time.After(5 * time.Second):
+	case <-time.After(2 * time.Second):
 		log.Print("the job list writer did not stop in time")
 	}
 }
@@ -1148,19 +1162,5 @@ func mimeFor(path string) string {
 		return "image/webp"
 	default:
 		return "application/octet-stream"
-	}
-}
-
-// nextRunTime computes the next run time based on frequency.
-func nextRunTime(frequency string, from time.Time) time.Time {
-	switch frequency {
-	case "daily":
-		return from.Add(24 * time.Hour)
-	case "weekly":
-		return from.Add(7 * 24 * time.Hour)
-	case "monthly":
-		return from.AddDate(0, 1, 0)
-	default:
-		return from.Add(24 * time.Hour)
 	}
 }

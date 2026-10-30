@@ -16,6 +16,7 @@ type Item struct {
 	Mode      string    `json:"mode"`      // "video" | "music"
 	SourceURL string    `json:"sourceUrl"` //
 	Playlist  string    `json:"playlist"`  // playlist title, empty for singles
+	Folder    string    `json:"folder"`    // target output folder (from schedules)
 	AddedAt   time.Time `json:"addedAt"`
 }
 
@@ -27,6 +28,7 @@ type Job struct {
 	VideoID    string    `json:"videoId"`
 	Mode       string    `json:"mode"`
 	Playlist   string    `json:"playlist"` // playlist title, empty for singles
+	Folder     string    `json:"folder"`   // target output folder (from schedules)
 	Status     string    `json:"status"`   // queued|running|completed|failed|canceled|paused
 	Progress   float64   `json:"progress"`
 	Downloaded int64     `json:"downloaded"`

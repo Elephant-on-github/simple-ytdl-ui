@@ -386,6 +386,48 @@ func (s *Store) SaveSchedule(sched Schedule) (Schedule, error) {
 	return sched, nil
 }
 
+// ClaimSchedule atomically advances a schedule's NextRun to the next period,
+// so two concurrent callers (the runner's 30s tick and a manual "Run now")
+// cannot both claim the same due slot. It returns the claimed schedule and
+// true when the claim succeeded, or false when the schedule is not due (or
+// doesn't exist).
+func (s *Store) ClaimSchedule(id string, now time.Time) (Schedule, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i, sched := range s.schedules {
+		if sched.ID != id {
+			continue
+		}
+		if sched.NextRun.IsZero() || sched.NextRun.After(now) {
+			return Schedule{}, false, nil
+		}
+		sched.NextRun = NextRunTime(sched.Frequency, now)
+		s.schedules[i] = sched
+		if err := s.writeAtomic(schedulesFile, struct {
+			Schedules []Schedule `json:"schedules"`
+		}{Schedules: s.schedules}, 0o644); err != nil {
+			return Schedule{}, false, err
+		}
+		return sched, true, nil
+	}
+	return Schedule{}, false, fmt.Errorf("unknown schedule %q", id)
+}
+
+// NextRunTime computes the next run time based on frequency.
+func NextRunTime(frequency string, from time.Time) time.Time {
+	switch frequency {
+	case "daily":
+		return from.Add(24 * time.Hour)
+	case "weekly":
+		return from.Add(7 * 24 * time.Hour)
+	case "monthly":
+		return from.AddDate(0, 1, 0)
+	default:
+		return from.Add(24 * time.Hour)
+	}
+}
+
 // RemoveSchedule removes a scheduled download. It reports a miss honestly so
 // the caller can answer 404 instead of a lying 200.
 func (s *Store) RemoveSchedule(id string) error {
