@@ -41,11 +41,10 @@ func main() {
 		log.Println("shutting down")
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		// Stop accepting new downloads first, then cancel the running ones:
-		// a yt-dlp child left behind is a process outside the container.
-		srv.Close()
+		// Cancel running downloads first; mgr.Close rejects new enqueues so
+		// in-flight requests can still drain instead of being reset.
 		mgr.Close()
-		if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Shutdown(ctx); err != nil {
 			log.Printf("shutdown failed: %v", err)
 		}
 	}()

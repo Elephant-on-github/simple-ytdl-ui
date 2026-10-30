@@ -47,6 +47,9 @@ type Manager struct {
 	persistNow    chan struct{}
 	persistDone   chan struct{}
 	persistClosed chan struct{}
+
+	dirty   bool
+	dirtyMu sync.Mutex
 }
 
 // persistLoop writes the job list at most once per second. It is the only
@@ -59,7 +62,13 @@ func (m *Manager) persistLoop() {
 		case <-m.persistNow:
 			m.flushJobs()
 		case <-ticker.C:
-			m.flushJobs()
+			m.dirtyMu.Lock()
+			d := m.dirty
+			m.dirty = false
+			m.dirtyMu.Unlock()
+			if d {
+				m.flushJobs()
+			}
 		case <-m.persistDone:
 			m.flushJobs()
 			close(m.persistClosed)
@@ -78,11 +87,17 @@ func (m *Manager) flushJobs() {
 	if err := m.store.SetJobs(snapshot); err != nil {
 		log.Printf("could not save the job list: %v", err)
 	}
+	m.dirtyMu.Lock()
+	m.dirty = false
+	m.dirtyMu.Unlock()
 }
 
 // requestPersist asks for a write. It never blocks, so a full disk cannot
 // stall a progress callback.
 func (m *Manager) requestPersist() {
+	m.dirtyMu.Lock()
+	m.dirty = true
+	m.dirtyMu.Unlock()
 	select {
 	case m.persistNow <- struct{}{}:
 	default:
@@ -92,6 +107,9 @@ func (m *Manager) requestPersist() {
 // maxKeptJobs is the number of finished jobs that are kept in the job list.
 // The list is persisted, so it must not grow without a bound.
 const maxKeptJobs = 200
+
+// ErrUnknownSchedule is returned when a schedule cannot be found.
+var ErrUnknownSchedule = errors.New("unknown schedule")
 
 // task is the unit of work handed to the workers.
 type task struct {
@@ -519,14 +537,15 @@ func (m *Manager) Jobs() []store.Job {
 }
 
 // removeTaskFromQueueLocked drops the first pending task with the given job id.
-// The lock must be held.
-func (m *Manager) removeTaskFromQueueLocked(id string) {
+// It returns true when a task was actually removed. The lock must be held.
+func (m *Manager) removeTaskFromQueueLocked(id string) bool {
 	for i := 0; i < len(m.queue); i++ {
 		if m.queue[i].id == id {
 			m.queue = append(m.queue[:i], m.queue[i+1:]...)
-			return
+			return true
 		}
 	}
+	return false
 }
 
 // Cancel stops a queued or running job. A running download is killed.
@@ -670,8 +689,11 @@ func (m *Manager) Remove(id string) error {
 	switch job.Status {
 	case store.StatusQueued:
 		// The task is still pending: drop it so the worker never runs it.
-		m.removeTaskFromQueueLocked(id)
-		m.active--
+		// Only decrement active if the task was actually in the queue; if a
+		// worker already took it, run()'s idx < 0 path owns the decrement.
+		if m.removeTaskFromQueueLocked(id) {
+			m.active--
+		}
 	case store.StatusRunning:
 		// run() will decrement active when the process dies.
 		if cancel, ok := m.cancels[id]; ok {
@@ -718,17 +740,39 @@ func (m *Manager) PauseAll() error {
 	return nil
 }
 
-// ResumeAll resumes every paused job.
+// ResumeAll resumes every paused job. Each paused job is put back on the
+// queue with a fresh task, just like Resume does, so the worker actually
+// picks it up again.
 func (m *Manager) ResumeAll() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	for i := range m.jobs {
-		if m.jobs[i].Status == store.StatusPaused {
-			m.jobs[i].Status = store.StatusQueued
-			m.jobs[i].UpdatedAt = time.Now().UTC()
-			m.active++
+		if m.jobs[i].Status != store.StatusPaused {
+			continue
 		}
+
+		j := m.jobs[i]
+		t := &task{
+			id:       j.ID,
+			url:      j.URL,
+			videoID:  j.VideoID,
+			title:    j.Title,
+			playlist: j.Playlist,
+			mode:     ytdlp.Mode(j.Mode),
+			fromList: j.Playlist != "",
+		}
+		if t.title == "" {
+			t.title = t.videoID
+		}
+
+		// Drop any stale task for this job before appending the new one.
+		m.removeTaskFromQueueLocked(j.ID)
+
+		m.jobs[i].Status = store.StatusQueued
+		m.jobs[i].UpdatedAt = time.Now().UTC()
+		m.active++
+		m.queue = append(m.queue, t)
 	}
 	m.persistLocked()
 	m.cond.Broadcast()
@@ -801,7 +845,7 @@ func (m *Manager) TriggerSchedule(id string) error {
 		}
 	}
 	if !found {
-		return fmt.Errorf("unknown schedule %q", id)
+		return fmt.Errorf("%w %q", ErrUnknownSchedule, id)
 	}
 
 	// Advance NextRun first so a duplicate trigger doesn't fire again immediately.
@@ -863,7 +907,9 @@ func (m *Manager) checkSchedules() {
 		cancel()
 		if err != nil {
 			log.Printf("schedule %s run failed: %v", sched.ID, err)
-			// NextRun was already advanced; on the next tick it will retry.
+			// NextRun was already advanced to the next period, so a failed
+			// run does not retry until then. TriggerSchedule (the manual
+			// "Run now" button) is the way to force an immediate retry.
 			continue
 		}
 	}

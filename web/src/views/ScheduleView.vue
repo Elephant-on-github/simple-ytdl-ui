@@ -55,7 +55,7 @@ async function runNow(id: string): Promise<void> {
   }
 }
 
-/** A next-run time that is in the past is a zero/unset value: show nothing. */
+/** A missing or zero next-run time shows nothing; real past times still show. */
 function nextRunLabel(value?: string): string {
   if (!value) return ''
   const date = new Date(value)

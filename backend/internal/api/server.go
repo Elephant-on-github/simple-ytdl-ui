@@ -731,7 +731,7 @@ func (s *Server) handleRemoveSchedule(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.manager.TriggerSchedule(id); err != nil {
-		if strings.Contains(err.Error(), "unknown schedule") {
+		if errors.Is(err, download.ErrUnknownSchedule) {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
