@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useJobsStore } from './jobs'
 import type { Job } from '../lib/api'
@@ -26,6 +26,11 @@ function job(overrides: Partial<Job> = {}): Job {
 describe('jobs store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('merges a polled payload', () => {
@@ -71,6 +76,30 @@ describe('jobs store', () => {
     expect(store.activeCount).toBe(1)
 
     store.merge([job({ id: 'a', status: 'completed' })])
+    expect(store.activeCount).toBe(0)
+  })
+
+  it('replaces the whole list on refresh, so server deletions show up', async () => {
+    // The bug behind this test: refresh merged, so a job removed on the
+    // server stayed visible until a page reload — and a removed queued job
+    // pinned activeCount at 1, polling forever.
+    const store = useJobsStore()
+
+    store.merge([job({ id: 'a', status: 'queued' }), job({ id: 'b', status: 'running' })])
+    expect(store.activeCount).toBe(2)
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [job({ id: 'b', status: 'completed' })] }),
+      })),
+    )
+
+    await store.refresh()
+
+    expect(store.items.map((item) => item.id)).toEqual(['b'])
     expect(store.activeCount).toBe(0)
   })
 })

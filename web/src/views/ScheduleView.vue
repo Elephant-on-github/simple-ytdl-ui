@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useSchedulesStore } from '../stores/schedules'
 
 const schedules = useSchedulesStore()
+
+onMounted(() => {
+  void schedules.refresh()
+})
 
 const url = ref('')
 const mode = ref<'video' | 'music'>('video')
@@ -49,6 +53,17 @@ async function runNow(id: string): Promise<void> {
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Could not run schedule'
   }
+}
+
+/** A next-run time that is in the past is a zero/unset value: show nothing. */
+function nextRunLabel(value?: string): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime()) || date.getFullYear() < 2000) return ''
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
 }
 
 
@@ -110,7 +125,7 @@ async function runNow(id: string): Promise<void> {
           </select>
         </div>
 
-        <button type="submit" class="btn btn--primary entry-go">
+        <button type="submit" class="btn btn--primary entry-go" :disabled="loading">
           <span class="btn-go-text">Schedule</span>
           <span class="bar-go-arrow" aria-hidden="true">→</span>
         </button>
@@ -142,7 +157,9 @@ async function runNow(id: string): Promise<void> {
             <div class="job-item">
               <span class="pl-item-time t-meta tnum">{{ item.frequency }}</span>
               <span class="pl-item-channel t-meta tnum">{{ item.folder || '(default)' }}</span>
-              <span v-if="item.nextRun" class="pl-item-channel t-meta tnum">Next: {{ new Date(item.nextRun).toLocaleString() }}</span>
+              <span v-if="nextRunLabel(item.nextRun)" class="pl-item-channel t-meta tnum">
+                Next: {{ nextRunLabel(item.nextRun) }}
+              </span>
             </div>
           </div>
 
@@ -151,9 +168,10 @@ async function runNow(id: string): Promise<void> {
               type="button"
               class="job-run t-nav"
               :aria-label="`Run ${item.id} now`"
+              :disabled="schedules.running === item.id"
               @click="runNow(item.id)"
             >
-              Run now
+              {{ schedules.running === item.id ? 'Starting…' : 'Run now' }}
             </button>
             <button
               type="button"

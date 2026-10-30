@@ -206,9 +206,12 @@ func TestAPasswordGuardsTheApp(t *testing.T) {
 func TestThePlaylistsComeFromTheSessionInTheCookies(t *testing.T) {
 	// With a YouTube session the playlists are listed without Google at all.
 	h := newHarness(t, fakeytdlp.ModeOK)
+	// The replacement manager runs a persistLoop of its own, so it has to be
+	// stopped with the test: a live writer outlives the temp directory.
 	h.server.manager = download.NewManager(
 		ytdlp.NewRunner(h.server.cfg.YtDlpBin).WithCookies("/data/cookies.txt", ""),
 		h.store, h.dir, 1)
+	t.Cleanup(h.server.manager.Close)
 
 	rec := h.do(t, http.MethodGet, "/api/playlists", nil)
 	if rec.Code == http.StatusUnauthorized {
@@ -597,13 +600,36 @@ func TestLibraryLifecycle(t *testing.T) {
 		t.Fatalf("items = %v, want one item", decode(t, rec)["items"])
 	}
 	item := items[0].(map[string]any)
-	for _, key := range []string{"id", "videoId", "title", "artist", "duration", "file", "mime", "size", "mode", "sourceUrl", "addedAt"} {
+	for _, key := range []string{"id", "videoId", "title", "artist", "duration", "mime", "size", "mode", "sourceUrl", "addedAt"} {
 		if _, ok := item[key]; !ok {
 			t.Errorf("the item has no %q field", key)
 		}
 	}
+	// The absolute server paths must not be on the wire.
+	for _, path := range []string{"file", "cover"} {
+		if _, ok := item[path]; ok {
+			t.Errorf("the item leaks its %q path over the API", path)
+		}
+	}
 	id := item["id"].(string)
-	file := item["file"].(string)
+
+	// Locate the file on disk the way the server wrote it: <dir>/<mode>/<folder>/<name>.
+	var file string
+	err := filepath.Walk(h.dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".mp4") {
+			file = path
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("find the downloaded file: %v", err)
+	}
+	if file == "" {
+		t.Fatal("no .mp4 was written anywhere under the data directory")
+	}
 
 	// The stream endpoint honours Range requests.
 	req := httptest.NewRequest(http.MethodGet, "/api/library/"+id+"/stream", nil)
@@ -880,6 +906,20 @@ func TestOAuthRedirectStaysOnThisSite(t *testing.T) {
 	if !strings.HasPrefix(got, "/") || strings.HasPrefix(got, "//") {
 		t.Errorf("Location = %q, want a path on this site", got)
 	}
+
+	// A backslash reads as a slash to the WHATWG URL parser, so "/\host" is a
+	// different origin even though it starts with a slash.
+	rec = h.do(t, http.MethodGet, "/api/auth/google?redirect=%2F%5Cevil.example", nil)
+	state = stateFromURL(decode(t, rec)["url"].(string))
+
+	rec = h.do(t, http.MethodGet, "/api/auth/google/callback?code=the-code&state="+state, nil)
+	got = rec.Header().Get("Location")
+	if strings.Contains(got, "evil.example") {
+		t.Errorf("Location = %q, want the redirect to be dropped, not followed", got)
+	}
+	if got != "/playlists?signedIn=1" {
+		t.Errorf("Location = %q, want /playlists?signedIn=1", got)
+	}
 }
 
 // stateFromURL pulls the state value out of an authorization URL.
@@ -1121,4 +1161,161 @@ func TestHealthEndpointDoesNotBlockWhileDownloadsRun(t *testing.T) {
 		t.Errorf("cancel status = %d, want 200", rec.Code)
 	}
 	h.server.manager.WaitIdle()
+}
+
+// --- schedules -------------------------------------------------------------
+
+func TestScheduleCreateListRunDeleteRoundTrip(t *testing.T) {
+	h := newHarness(t, fakeytdlp.ModeOK)
+
+	rec := h.do(t, http.MethodPost, "/api/schedules", map[string]any{
+		"url":       "https://www.youtube.com/playlist?list=PLfake",
+		"mode":      "music",
+		"folder":    "albums",
+		"frequency": "weekly",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+
+	doc := decode(t, rec)
+	sched, ok := doc["schedule"].(map[string]any)
+	if !ok {
+		t.Fatalf("schedule = %v, want an object", doc["schedule"])
+	}
+	id, _ := sched["id"].(string)
+	if id == "" {
+		t.Fatal("the created schedule has no id: the client cannot act on it")
+	}
+	if sched["nextRun"] == nil {
+		t.Error("the created schedule has no nextRun")
+	}
+
+	// It shows up in the listing.
+	rec = h.do(t, http.MethodGet, "/api/schedules", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", rec.Code)
+	}
+	list, _ := decode(t, rec)["schedules"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("schedules = %d, want 1", len(list))
+	}
+	if list[0].(map[string]any)["id"] != id {
+		t.Errorf("listed id = %v, want %s", list[0].(map[string]any)["id"], id)
+	}
+
+	// Running it puts a job on the queue.
+	rec = h.do(t, http.MethodPost, "/api/schedules/"+id+"/run", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("run status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	h.server.manager.WaitIdle()
+	jobs, _ := decode(t, h.do(t, http.MethodGet, "/api/jobs", nil))["items"].([]any)
+	if len(jobs) == 0 {
+		t.Error("running the schedule did not create any job")
+	}
+
+	// And it can be removed.
+	rec = h.do(t, http.MethodDelete, "/api/schedules/"+id, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200", rec.Code)
+	}
+	list, _ = decode(t, h.do(t, http.MethodGet, "/api/schedules", nil))["schedules"].([]any)
+	if len(list) != 0 {
+		t.Errorf("schedules after the delete = %d, want 0", len(list))
+	}
+
+	// A second delete reports 404 instead of a lying 200.
+	rec = h.do(t, http.MethodDelete, "/api/schedules/"+id, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("second delete status = %d, want 404", rec.Code)
+	}
+}
+
+func TestScheduleCreateRejectsAnEmptyURL(t *testing.T) {
+	h := newHarness(t, fakeytdlp.ModeOK)
+
+	for _, url := range []string{"", "   "} {
+		rec := h.do(t, http.MethodPost, "/api/schedules", map[string]any{
+			"url":       url,
+			"frequency": "daily",
+		})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("url %q: status = %d, want 400", url, rec.Code)
+		}
+	}
+
+	list, _ := decode(t, h.do(t, http.MethodGet, "/api/schedules", nil))["schedules"].([]any)
+	if len(list) != 0 {
+		t.Errorf("a blank schedule was stored (%d)", len(list))
+	}
+}
+
+func TestScheduleCreateRejectsBadValues(t *testing.T) {
+	h := newHarness(t, fakeytdlp.ModeOK)
+
+	cases := []map[string]any{
+		{"url": "https://example.com/song.mp3"},                        // not a YouTube URL
+		{"url": "https://www.youtube.com/watch?v=v", "mode": "bogus"},  // bad mode
+		{"url": "https://www.youtube.com/watch?v=v", "frequency": "x"}, // bad frequency
+	}
+	for i, body := range cases {
+		rec := h.do(t, http.MethodPost, "/api/schedules", body)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("case %d: status = %d, want 400 (%s)", i, rec.Code, rec.Body.String())
+		}
+	}
+
+	list, _ := decode(t, h.do(t, http.MethodGet, "/api/schedules", nil))["schedules"].([]any)
+	if len(list) != 0 {
+		t.Errorf("an invalid schedule was stored (%d)", len(list))
+	}
+}
+
+func TestScheduleSurvivesARestartOfTheStore(t *testing.T) {
+	// The complaint behind this test: schedules vanished on reload. The store
+	// reloads them from schedules.json, so a fresh Store must see them.
+	dir := t.TempDir()
+
+	saved, err := store.New(dir).SaveSchedule(store.Schedule{
+		URL:       "https://www.youtube.com/playlist?list=PLfake",
+		Mode:      "music",
+		Frequency: "daily",
+	})
+	if err != nil {
+		t.Fatalf("SaveSchedule: %v", err)
+	}
+	if saved.ID == "" {
+		t.Fatal("the store did not assign an id")
+	}
+
+	reloaded := store.New(dir).Schedules()
+	if len(reloaded) != 1 {
+		t.Fatalf("schedules = %d after a restart, want 1", len(reloaded))
+	}
+	if reloaded[0].ID != saved.ID {
+		t.Errorf("id = %q, want %q", reloaded[0].ID, saved.ID)
+	}
+	if reloaded[0].URL != saved.URL {
+		t.Errorf("url = %q, want %q", reloaded[0].URL, saved.URL)
+	}
+}
+
+func TestScheduleFolderAndNextRunDefaults(t *testing.T) {
+	h := newHarness(t, fakeytdlp.ModeOK)
+
+	// mode and frequency fall back to sane defaults.
+	rec := h.do(t, http.MethodPost, "/api/schedules", map[string]any{
+		"url": "https://www.youtube.com/playlist?list=PLfake",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	sched := decode(t, rec)["schedule"].(map[string]any)
+	if sched["mode"] != "video" {
+		t.Errorf("mode = %v, want video", sched["mode"])
+	}
+	if sched["frequency"] != "daily" {
+		t.Errorf("frequency = %v, want daily", sched["frequency"])
+	}
 }

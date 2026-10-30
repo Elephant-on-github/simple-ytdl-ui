@@ -38,6 +38,55 @@ type Manager struct {
 	queue   []*task // pending work, oldest first
 	closed  bool
 	workers sync.WaitGroup
+
+	schedDone chan struct{} // closed to stop the schedule runner
+
+	// The job list is written once a second at most. Progress arrives far
+	// more often, and an fsync for every line would serialise the whole
+	// manager — including the HTTP polls — behind disk I/O.
+	persistNow    chan struct{}
+	persistDone   chan struct{}
+	persistClosed chan struct{}
+}
+
+// persistLoop writes the job list at most once per second. It is the only
+// writer, so the marshal and the fsync happen outside the manager lock.
+func (m *Manager) persistLoop() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-m.persistNow:
+			m.flushJobs()
+		case <-ticker.C:
+			m.flushJobs()
+		case <-m.persistDone:
+			m.flushJobs()
+			close(m.persistClosed)
+			return
+		}
+	}
+}
+
+// flushJobs takes a snapshot under the lock and writes it without it.
+func (m *Manager) flushJobs() {
+	m.mu.Lock()
+	snapshot := make([]store.Job, len(m.jobs))
+	copy(snapshot, m.jobs)
+	m.mu.Unlock()
+
+	if err := m.store.SetJobs(snapshot); err != nil {
+		log.Printf("could not save the job list: %v", err)
+	}
+}
+
+// requestPersist asks for a write. It never blocks, so a full disk cannot
+// stall a progress callback.
+func (m *Manager) requestPersist() {
+	select {
+	case m.persistNow <- struct{}{}:
+	default:
+	}
 }
 
 // maxKeptJobs is the number of finished jobs that are kept in the job list.
@@ -55,6 +104,7 @@ type task struct {
 	playlist string
 	mode     ytdlp.Mode
 	fromList bool
+	folder   string // target output folder override (from schedules)
 }
 
 // NewManager starts the worker pool. Persisted jobs are restored so the UI
@@ -64,14 +114,21 @@ func NewManager(runner *ytdlp.Runner, st *store.Store, workDir string, concurren
 		concurrent = 1
 	}
 	m := &Manager{
-		runner:     runner,
-		store:      st,
-		workDir:    workDir,
-		concurrent: concurrent,
-		cancels:    map[string]context.CancelFunc{},
-		persist:    map[string]time.Time{},
+		runner:        runner,
+		store:         st,
+		workDir:       workDir,
+		concurrent:    concurrent,
+		cancels:       map[string]context.CancelFunc{},
+		persist:       map[string]time.Time{},
+		schedDone:     make(chan struct{}),
+		persistNow:    make(chan struct{}, 1),
+		persistDone:   make(chan struct{}),
+		persistClosed: make(chan struct{}),
 	}
 	m.cond = sync.NewCond(&m.mu)
+
+	// One writer for the job list; see persistLocked.
+	go m.persistLoop()
 
 	// Restore the persisted jobs, oldest first. Jobs that were still running
 	// when the process stopped can never finish, so they are marked failed.
@@ -98,17 +155,22 @@ func NewManager(runner *ytdlp.Runner, st *store.Store, workDir string, concurren
 }
 
 // pruneJobsLocked drops the oldest finished jobs so the persisted list stays
-// bounded. The lock must be held.
+// bounded. The lock must be held. Only terminal-status jobs are pruned;
+// queued and running jobs are never dropped.
 func (m *Manager) pruneJobsLocked() {
 	if len(m.jobs) <= maxKeptJobs {
 		return
 	}
 	drop := len(m.jobs) - maxKeptJobs
-	kept := make([]store.Job, 0, maxKeptJobs)
-	for _, j := range m.jobs[drop:] {
-		kept = append(kept, j)
+	for i := 0; i < len(m.jobs) && drop > 0; {
+		switch m.jobs[i].Status {
+		case store.StatusCompleted, store.StatusFailed, store.StatusCanceled:
+			m.jobs = append(m.jobs[:i], m.jobs[i+1:]...)
+			drop--
+		default:
+			i++
+		}
 	}
-	m.jobs = kept
 }
 
 // Enqueue turns a URL into one or more jobs. A playlist URL is expanded into
@@ -117,7 +179,8 @@ func (m *Manager) pruneJobsLocked() {
 //
 // It never blocks: the jobs are queued and the workers pick them up. A
 // thousand track playlist returns as soon as the entries are known.
-func (m *Manager) Enqueue(ctx context.Context, rawURL string, mode ytdlp.Mode, playlist bool) ([]store.Job, error) {
+// folder is an optional target output folder override (from schedules).
+func (m *Manager) Enqueue(ctx context.Context, rawURL string, mode ytdlp.Mode, playlist bool, folder string) ([]store.Job, error) {
 	kind, videoID, _, err := ytdlp.ClassifyURL(rawURL)
 	if err != nil {
 		return nil, err
@@ -127,12 +190,12 @@ func (m *Manager) Enqueue(ctx context.Context, rawURL string, mode ytdlp.Mode, p
 	if err != nil {
 		return nil, err
 	}
-	return m.enqueueEntries(mode, entries, playlistTitle)
+	return m.enqueueEntries(mode, entries, playlistTitle, folder)
 }
 
 // enqueueEntries turns the entries of a playlist (or a single video) into jobs
-// and puts them on the queue.
-func (m *Manager) enqueueEntries(mode ytdlp.Mode, entries []ytdlp.Info, playlistTitle string) ([]store.Job, error) {
+// and puts them on the queue. folder is an optional output-folder override.
+func (m *Manager) enqueueEntries(mode ytdlp.Mode, entries []ytdlp.Info, playlistTitle string, folder string) ([]store.Job, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -164,6 +227,7 @@ func (m *Manager) enqueueEntries(mode ytdlp.Mode, entries []ytdlp.Info, playlist
 			playlist: playlistTitle,
 			mode:     mode,
 			fromList: playlistTitle != "",
+			folder:   folder,
 		}
 		if t.title == "" {
 			t.title = t.videoID
@@ -296,7 +360,10 @@ func (m *Manager) run(t *task) {
 	m.persistLocked()
 	m.mu.Unlock()
 
-	outDir := filepath.Join(m.workDir, string(t.mode), sanitise(t.playlist))
+	outDir := filepath.Join(m.workDir, string(t.mode), sanitise(t.folder))
+	if t.folder == "" {
+		outDir = filepath.Join(m.workDir, string(t.mode), sanitise(t.playlist))
+	}
 	path, err := m.runner.Download(ctx, t.mode, outDir, t.url, func(p ytdlp.Progress) {
 		m.onProgress(t.id, p)
 	})
@@ -451,6 +518,17 @@ func (m *Manager) Jobs() []store.Job {
 	return out
 }
 
+// removeTaskFromQueueLocked drops the first pending task with the given job id.
+// The lock must be held.
+func (m *Manager) removeTaskFromQueueLocked(id string) {
+	for i := 0; i < len(m.queue); i++ {
+		if m.queue[i].id == id {
+			m.queue = append(m.queue[:i], m.queue[i+1:]...)
+			return
+		}
+	}
+}
+
 // Cancel stops a queued or running job. A running download is killed.
 func (m *Manager) Cancel(id string) error {
 	m.mu.Lock()
@@ -466,6 +544,7 @@ func (m *Manager) Cancel(id string) error {
 		m.jobs[idx].Status = store.StatusCanceled
 		m.jobs[idx].UpdatedAt = time.Now().UTC()
 		m.active--
+		m.removeTaskFromQueueLocked(id)
 		m.persistLocked()
 		m.cond.Broadcast()
 		return nil
@@ -473,6 +552,7 @@ func (m *Manager) Cancel(id string) error {
 		if cancel, ok := m.cancels[id]; ok {
 			cancel()
 		}
+		// run() will decrement active when the process dies.
 		return nil
 	default:
 		// Already finished, nothing to cancel.
@@ -497,6 +577,7 @@ func (m *Manager) Pause(id string) error {
 		m.jobs[idx].Status = store.StatusPaused
 		m.jobs[idx].UpdatedAt = time.Now().UTC()
 		m.active--
+		m.removeTaskFromQueueLocked(id)
 		m.persistLocked()
 		m.cond.Broadcast()
 	case store.StatusRunning:
@@ -505,9 +586,9 @@ func (m *Manager) Pause(id string) error {
 		}
 		// The status is set in run(), once the process has actually stopped.
 		// Mark it here too, in case the process takes a moment to die.
+		// active is decremented by run() when the process exits.
 		m.jobs[idx].Status = store.StatusPaused
 		m.jobs[idx].UpdatedAt = time.Now().UTC()
-		m.active--
 		m.persistLocked()
 		m.cond.Broadcast()
 	case store.StatusPaused:
@@ -561,6 +642,10 @@ func (m *Manager) Resume(id string) error {
 		t.title = t.videoID
 	}
 
+	// Purge any still-queued task with the same ID so Resume doesn't queue a
+	// duplicate download for a job that was paused while queued.
+	m.removeTaskFromQueueLocked(id)
+
 	m.jobs[idx].Status = store.StatusQueued
 	m.jobs[idx].UpdatedAt = time.Now().UTC()
 	m.active++
@@ -582,11 +667,16 @@ func (m *Manager) Remove(id string) error {
 	}
 
 	job := m.jobs[idx]
-	if job.Status == store.StatusRunning || job.Status == store.StatusQueued {
+	switch job.Status {
+	case store.StatusQueued:
+		// The task is still pending: drop it so the worker never runs it.
+		m.removeTaskFromQueueLocked(id)
+		m.active--
+	case store.StatusRunning:
+		// run() will decrement active when the process dies.
 		if cancel, ok := m.cancels[id]; ok {
 			cancel()
 		}
-		m.active--
 	}
 
 	// Clean up any partial file for this job.
@@ -613,13 +703,14 @@ func (m *Manager) PauseAll() error {
 			m.jobs[i].Status = store.StatusPaused
 			m.jobs[i].UpdatedAt = time.Now().UTC()
 			m.active--
+			m.removeTaskFromQueueLocked(m.jobs[i].ID)
 		case store.StatusRunning:
 			if cancel, ok := m.cancels[m.jobs[i].ID]; ok {
 				cancel()
 			}
 			m.jobs[i].Status = store.StatusPaused
 			m.jobs[i].UpdatedAt = time.Now().UTC()
-			m.active--
+			// active is decremented by run() when the process exits.
 		}
 	}
 	m.persistLocked()
@@ -678,8 +769,9 @@ func (m *Manager) Schedules() []store.Schedule {
 	return m.store.Schedules()
 }
 
-// SaveSchedule saves or updates a scheduled download.
-func (m *Manager) SaveSchedule(sched store.Schedule) error {
+// SaveSchedule saves or updates a scheduled download. Returns the persisted
+// schedule with its generated ID and CreatedAt.
+func (m *Manager) SaveSchedule(sched store.Schedule) (store.Schedule, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.store.SaveSchedule(sched)
@@ -692,42 +784,59 @@ func (m *Manager) RemoveSchedule(id string) error {
 	return m.store.RemoveSchedule(id)
 }
 
-// TriggerSchedule runs a scheduled download immediately.
+// TriggerSchedule runs a scheduled download immediately. The enqueue is done
+// synchronously so the caller learns whether it worked instead of getting a
+// 200 that hides a silent failure in a goroutine.
 func (m *Manager) TriggerSchedule(id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	schedules := m.store.Schedules()
-	var sched *store.Schedule
+	m.mu.Unlock()
+
+	var sched store.Schedule
+	var found bool
 	for i := range schedules {
 		if schedules[i].ID == id {
-			sched = &schedules[i]
+			sched, found = schedules[i], true
 			break
 		}
 	}
-	if sched == nil {
-		return fmt.Errorf("unknown schedule")
+	if !found {
+		return fmt.Errorf("unknown schedule %q", id)
 	}
 
-	// Enqueue the download. We don't hold the lock during enqueue since
-	// Enqueue acquires its own lock.
-	go func() {
-		_, err := m.Enqueue(context.Background(), sched.URL, ytdlp.Mode(sched.Mode), true)
-		if err != nil {
-			log.Printf("schedule %s trigger failed: %v", id, err)
-		}
-	}()
+	// Advance NextRun first so a duplicate trigger doesn't fire again immediately.
+	sched.NextRun = nextRunTime(sched.Frequency, time.Now())
+	if _, err := m.store.SaveSchedule(sched); err != nil {
+		return err
+	}
 
-	return nil
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	_, err := m.Enqueue(ctx, sched.URL, ytdlp.Mode(sched.Mode), true, sched.Folder)
+	return err
 }
 
 // runSchedules periodically checks for due schedules and triggers them.
 func (m *Manager) runSchedules() {
+	// Recover from any panic so scheduling never silently dies.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("schedule runner panicked: %v; restarting", r)
+			time.Sleep(30 * time.Second)
+			go m.runSchedules()
+		}
+	}()
+
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		m.checkSchedules()
+	for {
+		select {
+		case <-ticker.C:
+			m.checkSchedules()
+		case <-m.schedDone:
+			return
+		}
 	}
 }
 
@@ -740,18 +849,22 @@ func (m *Manager) checkSchedules() {
 			continue
 		}
 
-		// Trigger the download.
-		_, err := m.Enqueue(context.Background(), sched.URL, ytdlp.Mode(sched.Mode), true)
-		if err != nil {
-			log.Printf("schedule %s run failed: %v", sched.ID, err)
+		// Claim NextRun before enqueueing so a duplicate trigger (or a crash
+		// between Enqueue and SaveSchedule) doesn't fire again immediately.
+		sched.NextRun = nextRunTime(sched.Frequency, now)
+		if _, err := m.store.SaveSchedule(sched); err != nil {
+			log.Printf("schedule %s: could not claim next run: %v", sched.ID, err)
 			continue
 		}
 
-		// Update NextRun based on frequency.
-		nextRun := nextRunTime(sched.Frequency, now)
-		sched.NextRun = nextRun
-		if err := m.store.SaveSchedule(sched); err != nil {
-			log.Printf("could not update schedule %s: %v", sched.ID, err)
+		// Enqueue with a deadline so one hung probe can't stall every schedule.
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		_, err := m.Enqueue(ctx, sched.URL, ytdlp.Mode(sched.Mode), true, sched.Folder)
+		cancel()
+		if err != nil {
+			log.Printf("schedule %s run failed: %v", sched.ID, err)
+			// NextRun was already advanced; on the next tick it will retry.
+			continue
 		}
 	}
 }
@@ -825,8 +938,18 @@ func (m *Manager) Playlists(ctx context.Context) ([]ytdlp.Playlist, error) {
 	return m.runner.Playlists(ctx)
 }
 
-// Close stops the worker pool and cancels the downloads that are still
-// running.
+// PlaylistItems returns the items of a playlist from the YouTube session in
+// the cookies. It works without a Google Cloud project.
+func (m *Manager) PlaylistItems(ctx context.Context, playlistID string) ([]ytdlp.Info, error) {
+	info, err := m.runner.Probe(ctx, "https://www.youtube.com/playlist?list="+playlistID, true)
+	if err != nil {
+		return nil, err
+	}
+	return info.Entries, nil
+}
+
+// Close stops the worker pool, the schedule runner, and cancels the downloads
+// that are still running.
 func (m *Manager) Close() {
 	m.mu.Lock()
 	if m.closed {
@@ -834,6 +957,7 @@ func (m *Manager) Close() {
 		return
 	}
 	m.closed = true
+	close(m.schedDone) // stop the schedule runner
 	for _, cancel := range m.cancels {
 		cancel()
 	}
@@ -850,6 +974,16 @@ func (m *Manager) Close() {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
+	}
+
+	// Nothing is running now, so the final state is worth keeping: flush the
+	// job list, then wait for the writer to be done. Without the wait a final
+	// write can land after the data directory is gone.
+	close(m.persistDone)
+	select {
+	case <-m.persistClosed:
+	case <-time.After(5 * time.Second):
+		log.Print("the job list writer did not stop in time")
 	}
 }
 
@@ -883,10 +1017,12 @@ func (m *Manager) findActiveJobLocked(videoID, mode string) *store.Job {
 	return nil
 }
 
+// persistLocked asks the background writer to save the job list. The write
+// itself (marshal + fsync + rename) happens outside the manager lock: doing
+// it here would serialise every HTTP poll and every other worker behind disk
+// I/O, once per second per running download.
 func (m *Manager) persistLocked() {
-	jobs := make([]store.Job, len(m.jobs))
-	copy(jobs, m.jobs)
-	m.store.SetJobs(jobs)
+	m.requestPersist()
 }
 
 func newJobID() string {

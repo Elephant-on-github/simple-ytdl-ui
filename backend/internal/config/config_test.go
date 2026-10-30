@@ -164,7 +164,8 @@ func TestNoAllowedEmailsMeansNobody(t *testing.T) {
 	}
 }
 
-func TestGoogleEnabled(t *testing.T) {	tests := []struct {
+func TestGoogleEnabled(t *testing.T) {
+	tests := []struct {
 		name   string
 		id     string
 		secret string

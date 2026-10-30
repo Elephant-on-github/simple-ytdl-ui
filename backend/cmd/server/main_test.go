@@ -19,13 +19,14 @@ func TestNewServerServesTheHealthEndpoint(t *testing.T) {
 		DefaultMode:         "video",
 	}
 
-	handler, err := newServer(cfg)
+	handler, mgr, err := newServer(cfg)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
 	if handler == nil {
 		t.Fatal("newServer returned no handler")
 	}
+	t.Cleanup(mgr.Close)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
@@ -40,7 +41,7 @@ func TestNewServerServesTheHealthEndpoint(t *testing.T) {
 }
 
 func TestNewServerFailsWithoutADataDirectory(t *testing.T) {
-	if _, err := newServer(config.Config{}); err == nil {
+	if _, _, err := newServer(config.Config{}); err == nil {
 		t.Fatal("newServer error = nil, want an error")
 	}
 }

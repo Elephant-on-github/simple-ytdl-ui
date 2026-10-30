@@ -35,7 +35,8 @@ export const useJobsStore = defineStore('jobs', () => {
     loading.value = true
     try {
       const payload = await api.jobs()
-      merge(payload.items ?? [])
+      // Replace the whole list so server-side deletions are reflected.
+      items.value = (payload.items ?? []).sort(byNewest)
       error.value = ''
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Could not load the queue'

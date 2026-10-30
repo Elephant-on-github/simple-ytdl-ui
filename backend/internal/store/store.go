@@ -17,10 +17,10 @@ import (
 )
 
 const (
-	libraryFile  = "library.json"
-	jobsFile     = "jobs.json"
-	googleFile   = "google.json"
-	cookiesFile  = "cookies.txt"
+	libraryFile   = "library.json"
+	jobsFile      = "jobs.json"
+	googleFile    = "google.json"
+	cookiesFile   = "cookies.txt"
 	schedulesFile = "schedules.json"
 )
 
@@ -29,8 +29,8 @@ type Store struct {
 	mu  sync.RWMutex
 	dir string
 
-	items  []Item
-	jobs   []Job
+	items     []Item
+	jobs      []Job
 	schedules []Schedule
 
 	googleRefreshToken string
@@ -353,8 +353,9 @@ func (s *Store) Schedules() []Schedule {
 	return out
 }
 
-// SaveSchedule saves or updates a schedule.
-func (s *Store) SaveSchedule(sched Schedule) error {
+// SaveSchedule saves or updates a schedule. It returns the persisted schedule
+// with its generated ID and CreatedAt so callers can echo it back.
+func (s *Store) SaveSchedule(sched Schedule) (Schedule, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -368,18 +369,25 @@ func (s *Store) SaveSchedule(sched Schedule) error {
 		if existing.ID == sched.ID {
 			sched.CreatedAt = existing.CreatedAt
 			s.schedules[i] = sched
-			return s.writeAtomic(schedulesFile, struct {
+			if err := s.writeAtomic(schedulesFile, struct {
 				Schedules []Schedule `json:"schedules"`
-			}{Schedules: s.schedules}, 0o644)
+			}{Schedules: s.schedules}, 0o644); err != nil {
+				return Schedule{}, err
+			}
+			return sched, nil
 		}
 	}
 	s.schedules = append(s.schedules, sched)
-	return s.writeAtomic(schedulesFile, struct {
+	if err := s.writeAtomic(schedulesFile, struct {
 		Schedules []Schedule `json:"schedules"`
-	}{Schedules: s.schedules}, 0o644)
+	}{Schedules: s.schedules}, 0o644); err != nil {
+		return Schedule{}, err
+	}
+	return sched, nil
 }
 
-// RemoveSchedule removes a scheduled download.
+// RemoveSchedule removes a scheduled download. It reports a miss honestly so
+// the caller can answer 404 instead of a lying 200.
 func (s *Store) RemoveSchedule(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -392,5 +400,5 @@ func (s *Store) RemoveSchedule(id string) error {
 			}{Schedules: s.schedules}, 0o644)
 		}
 	}
-	return nil
+	return fmt.Errorf("unknown schedule %q", id)
 }

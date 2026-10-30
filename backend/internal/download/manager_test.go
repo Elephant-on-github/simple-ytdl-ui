@@ -71,7 +71,7 @@ func jobByID(jobs []store.Job, id string) (store.Job, bool) {
 func TestEnqueueSingleVideoCompletes(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeOK)
 
-	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeVideo, false)
+	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeVideo, false, "")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestEnqueueSingleVideoCompletes(t *testing.T) {
 func TestEnqueuePlaylistCreatesOneJobPerEntry(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeOK)
 
-	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/playlist?list=PLfake", ytdlp.ModeMusic, true)
+	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/playlist?list=PLfake", ytdlp.ModeMusic, true, "")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestEnqueuePlaylistCreatesOneJobPerEntry(t *testing.T) {
 func TestWatchURLWithListParameterIsASingleVideo(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeOK)
 
-	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLfake", ytdlp.ModeVideo, false)
+	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLfake", ytdlp.ModeVideo, false, "")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestWatchURLWithListParameterIsASingleVideo(t *testing.T) {
 func TestInvalidURLIsRejected(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeOK)
 
-	if _, err := f.manager.Enqueue(context.Background(), "https://example.com/song.mp3", ytdlp.ModeVideo, false); err == nil {
+	if _, err := f.manager.Enqueue(context.Background(), "https://example.com/song.mp3", ytdlp.ModeVideo, false, ""); err == nil {
 		t.Fatal("Enqueue error = nil, want an error")
 	}
 	if len(f.manager.Jobs()) != 0 {
@@ -195,7 +195,7 @@ func TestInvalidURLIsRejected(t *testing.T) {
 func TestFailedDownloadRecordsStderr(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeFail)
 
-	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeVideo, false)
+	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeVideo, false, "")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestFailedDownloadRecordsStderr(t *testing.T) {
 func TestCancelRunningJobLeavesItCanceled(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeSleep)
 
-	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeVideo, false)
+	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeVideo, false, "")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -267,13 +267,13 @@ func TestSameVideoAndModeIsNotDownloadedTwice(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeOK)
 	url := "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
-	first, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeVideo, false)
+	first, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeVideo, false, "")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
 	f.manager.WaitIdle()
 
-	second, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeVideo, false)
+	second, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeVideo, false, "")
 	if err != nil {
 		t.Fatalf("Enqueue (again): %v", err)
 	}
@@ -300,12 +300,12 @@ func TestSameVideoInAnotherModeIsDownloaded(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeOK)
 	url := "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
-	if _, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeMusic, false); err != nil {
+	if _, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeMusic, false, ""); err != nil {
 		t.Fatalf("Enqueue (music): %v", err)
 	}
 	f.manager.WaitIdle()
 
-	if _, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeVideo, false); err != nil {
+	if _, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeVideo, false, ""); err != nil {
 		t.Fatalf("Enqueue (video): %v", err)
 	}
 	f.manager.WaitIdle()
@@ -329,7 +329,7 @@ func TestSameVideoInAnotherModeIsDownloaded(t *testing.T) {
 func TestMusicDownloadProducesAnMp3(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeOK)
 
-	if _, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeMusic, false); err != nil {
+	if _, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeMusic, false, ""); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
 	f.manager.WaitIdle()
@@ -361,11 +361,11 @@ func TestMusicDownloadProducesAnMp3(t *testing.T) {
 func TestJobsAreReturnedNewestFirst(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeOK)
 
-	if _, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=vid001", ytdlp.ModeVideo, false); err != nil {
+	if _, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=vid001", ytdlp.ModeVideo, false, ""); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
 	f.manager.WaitIdle()
-	if _, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=vid002", ytdlp.ModeVideo, false); err != nil {
+	if _, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=vid002", ytdlp.ModeVideo, false, ""); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
 	f.manager.WaitIdle()
@@ -385,7 +385,7 @@ func TestFinishedFileSurvivesAPostProcessingFailure(t *testing.T) {
 	// must not be reported as failed and the file must not be orphaned.
 	f := newFixture(t, fakeytdlp.ModeFailAfterWrite)
 
-	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeMusic, false)
+	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeMusic, false, "")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestMusicModeWithoutAnMp3IsNotReportedAsFinished(t *testing.T) {
 	// an MP3.
 	f := newFixture(t, fakeytdlp.ModeNoMusic)
 
-	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeMusic, false)
+	jobs, err := f.manager.Enqueue(context.Background(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ytdlp.ModeMusic, false, "")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -449,7 +449,7 @@ func TestEnqueueingManyEntriesDoesNotBlock(t *testing.T) {
 
 	done := make(chan []store.Job, 1)
 	go func() {
-		jobs, err := f.manager.enqueueEntries(ytdlp.ModeVideo, entries, "Big Playlist")
+		jobs, err := f.manager.enqueueEntries(ytdlp.ModeVideo, entries, "Big Playlist", "")
 		if err != nil {
 			t.Errorf("enqueueEntries: %v", err)
 		}
@@ -472,7 +472,7 @@ func TestQueuingTheSameVideoInAnotherModeLeavesTheFirstJobAlone(t *testing.T) {
 	f := newFixture(t, fakeytdlp.ModeSleep)
 	url := "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
-	first, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeVideo, false)
+	first, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeVideo, false, "")
 	if err != nil {
 		t.Fatalf("Enqueue (video): %v", err)
 	}
@@ -490,7 +490,7 @@ func TestQueuingTheSameVideoInAnotherModeLeavesTheFirstJobAlone(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	if _, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeMusic, false); err != nil {
+	if _, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeMusic, false, ""); err != nil {
 		t.Fatalf("Enqueue (music): %v", err)
 	}
 
@@ -508,7 +508,7 @@ func TestSyncingTheSamePlaylistTwiceDoesNotDownloadTwice(t *testing.T) {
 	url := "https://www.youtube.com/playlist?list=PLfake"
 
 	for i := 0; i < 2; i++ {
-		if _, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeMusic, true); err != nil {
+		if _, err := f.manager.Enqueue(context.Background(), url, ytdlp.ModeMusic, true, ""); err != nil {
 			t.Fatalf("Enqueue (round %d): %v", i, err)
 		}
 		f.manager.WaitIdle()

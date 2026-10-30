@@ -25,13 +25,13 @@ const jobs: Job[] = [
 
 const library: Item[] = [
   {
-    id: 'yt_1', videoId: '1', title: 'Nightcall', artist: 'Kavinsky', duration: 257, file: 'f',
-    cover: 'c', mime: 'audio/mpeg', size: 7340032, mode: 'music', sourceUrl: 'u', playlist: '',
+    id: 'yt_1', videoId: '1', title: 'Nightcall', artist: 'Kavinsky', duration: 257,
+    mime: 'audio/mpeg', size: 7340032, mode: 'music', sourceUrl: 'u', playlist: '', hasCover: true,
     addedAt: '2026-10-20T09:12:00Z',
   },
   {
-    id: 'yt_2', videoId: '2', title: 'City Lights', artist: 'Marrow', duration: 321, file: 'f',
-    cover: 'c', mime: 'audio/mpeg', size: 6291456, mode: 'music', sourceUrl: 'u', playlist: '',
+    id: 'yt_2', videoId: '2', title: 'City Lights', artist: 'Marrow', duration: 321,
+    mime: 'audio/mpeg', size: 6291456, mode: 'music', sourceUrl: 'u', playlist: '', hasCover: false,
     addedAt: '2026-10-19T09:12:00Z',
   },
 ]

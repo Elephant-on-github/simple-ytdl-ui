@@ -41,10 +41,10 @@ type Server struct {
 	yt      *youtube.Client
 	auth    *auth.Manager
 
-	mu       sync.Mutex
-	oauth    *youtube.OAuth
-	states   map[string]authState
-	cached   *youtube.Client
+	mu     sync.Mutex
+	oauth  *youtube.OAuth
+	states map[string]authState
+	cached *youtube.Client
 
 	mux *http.ServeMux
 }
@@ -499,13 +499,37 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePlaylistItems(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	// When only a YouTube session (cookies) is available, probe the playlist
+	// directly with yt-dlp — no Google Cloud project or OAuth needed.
+	if s.manager.HasCookies() {
+		items, err := s.manager.PlaylistItems(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		out := make([]map[string]any, 0, len(items))
+		for _, it := range items {
+			out = append(out, map[string]any{
+				"id":          it.ID,
+				"title":       it.Title,
+				"artist":      it.Uploader,
+				"duration":    it.Duration,
+				"thumbnail":   it.Thumbnail,
+				"webpage_url": it.WebpageURL,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": out})
+		return
+	}
+
 	client, err := s.client(r.Context())
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "sign in with Google to see your playlists")
 		return
 	}
 
-	id := r.PathValue("id")
 	items, next, err := client.PlaylistItems(r.Context(), id, r.URL.Query().Get("pageToken"))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
@@ -556,7 +580,7 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobs, err := s.manager.Enqueue(r.Context(), body.URL, parsed, body.Playlist)
+	jobs, err := s.manager.Enqueue(r.Context(), body.URL, parsed, body.Playlist, "")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -685,11 +709,12 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		NextRun:   time.Now(), // schedule for now
 	}
 
-	if err := s.manager.SaveSchedule(sched); err != nil {
+	saved, err := s.manager.SaveSchedule(sched)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "schedule": sched})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "schedule": saved})
 }
 
 // handleRemoveSchedule removes a scheduled download.
@@ -706,7 +731,11 @@ func (s *Server) handleRemoveSchedule(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.manager.TriggerSchedule(id); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		if strings.Contains(err.Error(), "unknown schedule") {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -717,7 +746,26 @@ func (s *Server) handleLibrary(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []store.Item{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	// The file and cover paths are absolute server paths. The client never
+	// needs them: it streams and fetches the cover by id.
+	out := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		out = append(out, map[string]any{
+			"id":        it.ID,
+			"videoId":   it.VideoID,
+			"title":     it.Title,
+			"artist":    it.Artist,
+			"duration":  it.Duration,
+			"mime":      it.Mime,
+			"size":      it.Size,
+			"mode":      it.Mode,
+			"sourceUrl": it.SourceURL,
+			"playlist":  it.Playlist,
+			"hasCover":  it.Cover != "",
+			"addedAt":   it.AddedAt,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
 func (s *Server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
@@ -891,12 +939,19 @@ func (s *Server) pruneStatesLocked() {
 
 // safeRedirect keeps the browser on this site: only a path of the app itself
 // is accepted, never an absolute address.
+//
+// A backslash is rejected too. WHATWG URL parsing reads "\" as "/" for
+// special schemes, so "/\evil.example" is a different origin even though it
+// starts with a slash.
 func safeRedirect(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
 		return defaultRedirect
 	}
-	if strings.ContainsAny(raw, "\r\n") {
+	if strings.ContainsAny(raw, "\\\r\n") {
+		return defaultRedirect
+	}
+	if parsed, err := url.Parse(raw); err != nil || parsed.Host != "" || !strings.HasPrefix(parsed.Path, "/") {
 		return defaultRedirect
 	}
 	return raw

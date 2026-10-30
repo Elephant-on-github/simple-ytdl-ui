@@ -9,13 +9,13 @@ import (
 
 // Config holds every runtime knob of the server.
 type Config struct {
-	Port                int
-	DataDir             string
-	LibraryDir          string
-	YtDlpBin            string
-	FfmpegBin           string
-	GoogleClientID      string
-	GoogleClientSecret  string
+	Port               int
+	DataDir            string
+	LibraryDir         string
+	YtDlpBin           string
+	FfmpegBin          string
+	GoogleClientID     string
+	GoogleClientSecret string
 	// GoogleRedirectURL is the URI Google sends the browser back to. It is
 	// optional: when it is empty the server derives it from the request,
 	// which is what a deployment behind a proxy needs.

@@ -61,9 +61,9 @@ func (r *Runner) Playlists(ctx context.Context) ([]Playlist, error) {
 
 	var doc struct {
 		Entries []struct {
-			ID        string `json:"id"`
-			Title     string `json:"title"`
-			URL       string `json:"url"`
+			ID         string `json:"id"`
+			Title      string `json:"title"`
+			URL        string `json:"url"`
 			WebpageURL string `json:"webpage_url"`
 			Thumbnails []struct {
 				URL string `json:"url"`

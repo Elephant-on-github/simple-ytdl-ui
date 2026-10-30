@@ -27,7 +27,7 @@ type Job struct {
 	VideoID    string    `json:"videoId"`
 	Mode       string    `json:"mode"`
 	Playlist   string    `json:"playlist"` // playlist title, empty for singles
-	Status     string    `json:"status"` // queued|running|completed|failed|canceled|paused
+	Status     string    `json:"status"`   // queued|running|completed|failed|canceled|paused
 	Progress   float64   `json:"progress"`
 	Downloaded int64     `json:"downloaded"`
 	Total      int64     `json:"total"`
@@ -51,11 +51,11 @@ const (
 // Schedule is a recurring download schedule.
 type Schedule struct {
 	ID        string    `json:"id"`
-	URL       string    `json:"url"`      // YouTube playlist URL
-	Title     string    `json:"title"`    // Playlist title (optional)
-	Mode      string    `json:"mode"`     // "video" | "music"
-	Folder    string    `json:"folder"`   // Target output folder
+	URL       string    `json:"url"`       // YouTube playlist URL
+	Title     string    `json:"title"`     // Playlist title (optional)
+	Mode      string    `json:"mode"`      // "video" | "music"
+	Folder    string    `json:"folder"`    // Target output folder
 	Frequency string    `json:"frequency"` // "daily", "weekly", "monthly"
-	NextRun   time.Time `json:"nextRun"`  // Next scheduled run time
+	NextRun   time.Time `json:"nextRun"`   // Next scheduled run time
 	CreatedAt time.Time `json:"createdAt"`
 }

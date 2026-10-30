@@ -57,13 +57,13 @@ export interface Item {
   title: string
   artist: string
   duration: number
-  file: string
-  cover: string
   mime: string
   size: number
   mode: Mode
   sourceUrl: string
   playlist: string
+  /** Whether the server has a cover image for this item. */
+  hasCover: boolean
   addedAt: string
 }
 

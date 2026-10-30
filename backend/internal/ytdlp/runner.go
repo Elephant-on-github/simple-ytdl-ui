@@ -23,9 +23,9 @@ type Runner struct {
 	// to yt-dlp, so the server does not depend on ffmpeg being on the PATH.
 	FfmpegBin string
 
-	mu              sync.RWMutex
-	cookiesFile     string
-	cookiesBrowser  string
+	mu             sync.RWMutex
+	cookiesFile    string
+	cookiesBrowser string
 }
 
 // NewRunner returns a runner that uses the given yt-dlp binary.

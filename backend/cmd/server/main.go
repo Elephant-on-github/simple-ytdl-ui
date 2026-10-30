@@ -23,7 +23,7 @@ import (
 func main() {
 	cfg := config.Load()
 
-	handler, err := newServer(cfg)
+	handler, mgr, err := newServer(cfg)
 	if err != nil {
 		log.Fatalf("could not start the server: %v", err)
 	}
@@ -41,7 +41,11 @@ func main() {
 		log.Println("shutting down")
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		if err := srv.Shutdown(ctx); err != nil {
+		// Stop accepting new downloads first, then cancel the running ones:
+		// a yt-dlp child left behind is a process outside the container.
+		srv.Close()
+		mgr.Close()
+		if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("shutdown failed: %v", err)
 		}
 	}()
@@ -52,13 +56,14 @@ func main() {
 	}
 }
 
-// newServer wires the whole application together and returns its handler.
-func newServer(cfg config.Config) (http.Handler, error) {
+// newServer wires the whole application together and returns its handler and
+// its download manager, so the caller can stop the workers on shutdown.
+func newServer(cfg config.Config) (http.Handler, *download.Manager, error) {
 	if cfg.DataDir == "" {
-		return nil, errors.New("no data directory configured")
+		return nil, nil, errors.New("no data directory configured")
 	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		return nil, fmt.Errorf("cannot create the data directory %q: %w", cfg.DataDir, err)
+		return nil, nil, fmt.Errorf("cannot create the data directory %q: %w", cfg.DataDir, err)
 	}
 
 	st := store.New(cfg.DataDir)
@@ -84,5 +89,5 @@ func newServer(cfg config.Config) (http.Handler, error) {
 	// the data directory otherwise.
 	mgr := download.NewManager(runner, st, cfg.MediaDir(), cfg.ConcurrentDownloads)
 
-	return api.New(cfg, st, mgr, nil).Handler(), nil
+	return api.New(cfg, st, mgr, nil).Handler(), mgr, nil
 }
